@@ -1,0 +1,6 @@
+{
+  "name": "Content-Caption Generator",
+  "description": "AI-powered social media caption and hashtag generator with platform-specific optimization and tiered usage tracking.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
