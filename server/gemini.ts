@@ -27,7 +27,7 @@ export interface GenerateCaptionsParams {
 }
 
 // Candidate models in priority order according to official @google/genai guidelines
-const MODEL_CASCADE = ['gemini-3.6-flash', 'gemini-3.5-flash-lite', 'gemini-3.7-flash'];
+const MODEL_CASCADE = ['gemini-3.7-flash', 'gemini-flash-latest'];
 
 function isRetryableError(error: any): boolean {
   const errMsg = (error?.message || error?.toString() || '').toLowerCase();

@@ -115,7 +115,7 @@ export const HashtagsCard: React.FC<HashtagsCardProps> = ({ hashtags, platform }
       
       <div className="pt-2 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between">
         <p className="text-[10px] font-mono text-slate-400 flex items-center gap-1.5">
-          <div className="w-1.5 h-1.5 rounded-full bg-slate-300 dark:bg-slate-700"></div>
+          <span className="w-1.5 h-1.5 rounded-full bg-slate-300 dark:bg-slate-700 inline-block shrink-0" />
           Click any tag chip for single copy selection.
         </p>
         <span className="text-[10px] font-mono text-slate-400 uppercase">

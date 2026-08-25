@@ -41,7 +41,7 @@ export const PlatformSelector: React.FC<PlatformSelectorProps> = ({
           Target Network / Architecture
         </label>
         <span className="text-[11px] font-mono text-slate-400 flex items-center gap-1.5">
-          <div className="w-1.5 h-1.5 rounded-full bg-indigo-500"></div>
+          <span className="w-1.5 h-1.5 rounded-full bg-indigo-500 inline-block shrink-0"></span>
           Rules active
         </span>
       </div>

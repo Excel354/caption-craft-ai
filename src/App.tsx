@@ -50,22 +50,54 @@ function MainGenerator() {
     setError(null);
     setIsQuotaExceeded(false);
 
-    try {
-      const res = await fetch('/api/generate', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token || ''}`,
-        },
-        body: JSON.stringify({
-          topic: topic.trim(),
-          platform,
-          includeEmojis,
-          tone: tone || undefined,
-        }),
-      });
+    let res: Response | null = null;
+    let attempts = 0;
+    const maxFetchAttempts = 2;
 
-      const data = await res.json();
+    while (attempts < maxFetchAttempts) {
+      attempts++;
+      try {
+        res = await fetch('/api/generate', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token || ''}`,
+          },
+          body: JSON.stringify({
+            topic: topic.trim(),
+            platform,
+            includeEmojis,
+            tone: tone || undefined,
+          }),
+        });
+        break;
+      } catch (networkErr: any) {
+        if (attempts >= maxFetchAttempts) {
+          console.error('Fetch network failure:', networkErr);
+          setError('Connection temporarily unavailable. Please verify your internet or try again.');
+          setIsLoading(false);
+          return;
+        }
+        await new Promise(r => setTimeout(r, 600));
+      }
+    }
+
+    if (!res) {
+      setIsLoading(false);
+      return;
+    }
+
+    try {
+      const rawText = await res.text();
+      let data: any;
+      try {
+        data = JSON.parse(rawText);
+      } catch {
+        if (!res.ok) {
+          throw new Error(`Server temporarily busy (status ${res.status}). Please try again.`);
+        }
+        throw new Error('Unexpected response format from server. Please try again.');
+      }
 
       if (res.status === 429 || data.quotaExceeded) {
         setIsQuotaExceeded(true);
@@ -77,7 +109,7 @@ function MainGenerator() {
       }
 
       if (!res.ok || !data.success) {
-        throw new Error(data.error || 'Failed to generate captions');
+        throw new Error(data.error || 'Failed to generate captions. Please try again.');
       }
 
       setCaptions(data.captions || []);

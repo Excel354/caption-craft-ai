@@ -1,0 +1,49 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="100%" height="100%">
+  <defs>
+    <linearGradient id="logo-bg-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#8B5CF6" />
+      <stop offset="45%" stop-color="#7C3AED" />
+      <stop offset="100%" stop-color="#2563EB" />
+    </linearGradient>
+    <linearGradient id="pencil-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#1E1B4B" />
+      <stop offset="100%" stop-color="#0F172A" />
+    </linearGradient>
+    <filter id="logo-shadow" x="-10%" y="-10%" width="120%" height="130%">
+      <feDropShadow dx="0" dy="12" stdDeviation="16" flood-color="#7C3AED" flood-opacity="0.28" />
+    </filter>
+  </defs>
+
+  <!-- Main Squircle Badge with Speech Tail -->
+  <g filter="url(#logo-shadow)">
+    <!-- Squircle Body -->
+    <rect x="76" y="44" width="360" height="340" rx="92" fill="url(#logo-bg-grad)" />
+    <!-- Speech Bubble Pointer Tail -->
+    <path d="M 226 380 C 236 412 216 438 196 448 C 246 442 278 408 286 384 Z" fill="#2563EB" />
+  </g>
+
+  <!-- Sparkle Stars (Bright Yellow) -->
+  <!-- Left Star -->
+  <path d="M 175 105 Q 175 125 160 135 Q 175 145 175 165 Q 175 145 190 135 Q 175 125 175 105 Z" fill="#FACC15" />
+  <!-- Small Star -->
+  <path d="M 218 95 Q 218 108 208 115 Q 218 122 218 135 Q 218 122 228 115 Q 218 108 218 95 Z" fill="#FDE047" />
+
+  <!-- Notepad Document (White) -->
+  <rect x="156" y="148" width="200" height="152" rx="36" fill="#FFFFFF" />
+
+  <!-- Text Lines on Notepad -->
+  <rect x="188" y="190" width="112" height="14" rx="7" fill="#7C3AED" />
+  <rect x="188" y="218" width="88" height="14" rx="7" fill="#8B5CF6" />
+  <rect x="188" y="246" width="56" height="14" rx="7" fill="#A78BFA" />
+
+  <!-- Stylized Pencil / Stylus -->
+  <g transform="translate(285, 178) rotate(35)">
+    <!-- Pencil Body -->
+    <rect x="0" y="0" width="30" height="74" rx="10" fill="url(#pencil-grad)" />
+    <!-- Eraser / Cap Band -->
+    <rect x="0" y="2" width="30" height="14" rx="6" fill="#EDE9FE" />
+    <!-- Pencil Tip -->
+    <path d="M 0 74 L 15 102 L 30 74 Z" fill="#1E1B4B" />
+    <path d="M 10 93 L 15 102 L 20 93 Z" fill="#FFFFFF" />
+  </g>
+</svg>

@@ -1,7 +1,7 @@
 import crypto from 'crypto';
 import fs from 'fs';
 import path from 'path';
-import { PlanTier, User, DailyUsage, SavedItem } from '../src/types';
+import { PlanTier, User, DailyUsage, SavedItem, UpgradeRequest, SystemAnnouncement, BankConfig, AdminStats } from '../src/types';
 import { PLAN_LIMITS } from '../src/constants/platforms';
 
 interface StoredUser extends User {
@@ -19,18 +19,45 @@ interface DatabaseSchema {
   users: Record<string, StoredUser>;
   sessions: Record<string, StoredSession>;
   dailyUsage: Record<string, number>; // key: `${userId}:${YYYY-MM-DD}`
-  history: SavedItem[];
+  userHistory: Record<string, SavedItem[]>; // key: userId
+  upgradeRequests: Record<string, UpgradeRequest>; // key: requestId
+  announcement: SystemAnnouncement;
+  bankConfig: BankConfig;
+  adminSessions: Record<string, number>; // token -> timestamp
+  // Legacy migration compatibility
+  history?: SavedItem[];
 }
 
 const DATA_DIR = path.join(process.cwd(), 'data');
 const DB_FILE = path.join(DATA_DIR, 'db.json');
+
+const DEFAULT_BANK_CONFIG: BankConfig = {
+  bankName: 'Silicon Global Commercial Bank',
+  accountName: 'Caption Generator Technologies LLC',
+  accountNumber: '••••••••8492',
+  routingOrIban: '021000021 / US89SGCB0210000218492',
+  swiftCode: 'SGCBUS33',
+  instructions: 'Please include your Account Email and Plan Name in the bank transfer reference note.',
+};
+
+const DEFAULT_ANNOUNCEMENT: SystemAnnouncement = {
+  id: 'ann_initial',
+  message: '🚀 Welcome to Caption Generator Pro! Manual bank transfer upgrades are reviewed instantly by our team.',
+  active: true,
+  type: 'promo',
+  updatedAt: new Date().toISOString(),
+};
 
 class Database {
   private data: DatabaseSchema = {
     users: {},
     sessions: {},
     dailyUsage: {},
-    history: [],
+    userHistory: {},
+    upgradeRequests: {},
+    announcement: DEFAULT_ANNOUNCEMENT,
+    bankConfig: DEFAULT_BANK_CONFIG,
+    adminSessions: {},
   };
 
   private lock = Promise.resolve();
@@ -46,7 +73,26 @@ class Database {
       }
       if (fs.existsSync(DB_FILE)) {
         const raw = fs.readFileSync(DB_FILE, 'utf-8');
-        this.data = JSON.parse(raw);
+        const parsed = JSON.parse(raw);
+        this.data = {
+          ...this.data,
+          ...parsed,
+          userHistory: parsed.userHistory || {},
+          upgradeRequests: parsed.upgradeRequests || {},
+          announcement: parsed.announcement || DEFAULT_ANNOUNCEMENT,
+          bankConfig: parsed.bankConfig || DEFAULT_BANK_CONFIG,
+          adminSessions: parsed.adminSessions || {},
+        };
+        // Migrate legacy global history to default user if present
+        if (Array.isArray(parsed.history) && parsed.history.length > 0) {
+          const defaultUser = this.getOrCreateDefaultUser();
+          if (!this.data.userHistory[defaultUser.id]) {
+            this.data.userHistory[defaultUser.id] = parsed.history.map((h: SavedItem) => ({
+              ...h,
+              userId: defaultUser.id,
+            }));
+          }
+        }
       } else {
         this.seedInitialUser();
         this.persist();
@@ -87,15 +133,58 @@ class Database {
     }
   }
 
+  public getOrCreateDefaultUser(): User {
+    const defaultEmail = 'creator@example.com';
+    let user = Object.values(this.data.users).find(u => u.email === defaultEmail);
+    if (!user) {
+      this.seedInitialUser();
+      user = Object.values(this.data.users).find(u => u.email === defaultEmail);
+    }
+    if (!user) {
+      const id = 'usr_' + crypto.randomUUID().slice(0, 8);
+      const salt = crypto.randomBytes(16).toString('hex');
+      const hash = this.hashPassword('password123', salt);
+      const newUser: StoredUser = {
+        id,
+        email: defaultEmail,
+        name: 'Demo Creator',
+        plan: 'free',
+        passwordHash: hash,
+        passwordSalt: salt,
+        createdAt: new Date().toISOString(),
+      };
+      this.data.users[id] = newUser;
+      this.persist();
+      user = newUser;
+    }
+    return this.mapUser(user);
+  }
+
   public getTodayUtcString(): string {
     const now = new Date();
-    return now.toISOString().split('T')[0]; // e.g. "2026-08-21"
+    return now.toISOString().split('T')[0]; // e.g. "2026-08-25"
   }
 
   public getNextMidnightUtcIso(): string {
     const now = new Date();
     const tomorrow = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1, 0, 0, 0, 0));
     return tomorrow.toISOString();
+  }
+
+  private mapUser(stored: StoredUser): User {
+    // Find active pending upgrade if any
+    const pendingUpgrade = Object.values(this.data.upgradeRequests).find(
+      u => u.userId === stored.id && u.status === 'pending'
+    ) || stored.pendingUpgrade;
+
+    return {
+      id: stored.id,
+      email: stored.email,
+      name: stored.name,
+      plan: stored.plan,
+      createdAt: stored.createdAt,
+      pendingUpgrade: pendingUpgrade || null,
+    };
   }
 
   public async register(email: string, password: string, name?: string): Promise<{ user: User; token: string }> {
@@ -130,13 +219,7 @@ class Database {
 
     this.persist();
     return {
-      user: {
-        id: user.id,
-        email: user.email,
-        name: user.name,
-        plan: user.plan,
-        createdAt: user.createdAt,
-      },
+      user: this.mapUser(user),
       token,
     };
   }
@@ -162,13 +245,7 @@ class Database {
 
     this.persist();
     return {
-      user: {
-        id: user.id,
-        email: user.email,
-        name: user.name,
-        plan: user.plan,
-        createdAt: user.createdAt,
-      },
+      user: this.mapUser(user),
       token,
     };
   }
@@ -178,25 +255,13 @@ class Database {
     if (!session) return null;
     const user = this.data.users[session.userId];
     if (!user) return null;
-    return {
-      id: user.id,
-      email: user.email,
-      name: user.name,
-      plan: user.plan,
-      createdAt: user.createdAt,
-    };
+    return this.mapUser(user);
   }
 
   public getUserById(userId: string): User | null {
     const user = this.data.users[userId];
     if (!user) return null;
-    return {
-      id: user.id,
-      email: user.email,
-      name: user.name,
-      plan: user.plan,
-      createdAt: user.createdAt,
-    };
+    return this.mapUser(user);
   }
 
   public updateUserPlan(userId: string, plan: PlanTier): User {
@@ -204,13 +269,7 @@ class Database {
     if (!user) throw new Error('User not found.');
     user.plan = plan;
     this.persist();
-    return {
-      id: user.id,
-      email: user.email,
-      name: user.name,
-      plan: user.plan,
-      createdAt: user.createdAt,
-    };
+    return this.mapUser(user);
   }
 
   public getDailyUsage(userId: string): DailyUsage {
@@ -232,10 +291,6 @@ class Database {
     };
   }
 
-  /**
-   * Atomically checks quota and increments if allowed.
-   * Prevents race conditions during rapid double clicks.
-   */
   public async checkAndIncrementUsage(userId: string): Promise<{
     allowed: boolean;
     count: number;
@@ -244,7 +299,6 @@ class Database {
     plan: PlanTier;
     resetsAtUtc: string;
   }> {
-    // Acquire simple mutex lock
     return new Promise(resolve => {
       this.lock = this.lock.then(async () => {
         const user = this.data.users[userId];
@@ -267,7 +321,6 @@ class Database {
           return;
         }
 
-        // Allowed - increment
         const newCount = currentCount + 1;
         this.data.dailyUsage[key] = newCount;
         this.persist();
@@ -295,32 +348,271 @@ class Database {
     }
   }
 
-  public addHistory(item: Omit<SavedItem, 'id' | 'createdAt'>): SavedItem {
+  // -------------------------------------------------------------
+  // User History Management (Per-User)
+  // -------------------------------------------------------------
+
+  public addHistory(userId: string, item: Omit<SavedItem, 'id' | 'createdAt' | 'userId'>): SavedItem {
+    if (!this.data.userHistory[userId]) {
+      this.data.userHistory[userId] = [];
+    }
+
     const newItem: SavedItem = {
       ...item,
       id: 'hist_' + crypto.randomUUID().slice(0, 8),
+      userId,
       createdAt: new Date().toISOString(),
     };
-    this.data.history.unshift(newItem);
-    if (this.data.history.length > 50) {
-      this.data.history.pop();
+
+    this.data.userHistory[userId].unshift(newItem);
+    // Keep last 100 per user
+    if (this.data.userHistory[userId].length > 100) {
+      this.data.userHistory[userId].pop();
     }
+
     this.persist();
     return newItem;
   }
 
-  public getHistory(): SavedItem[] {
-    return this.data.history;
+  public getUserHistory(userId: string): SavedItem[] {
+    return this.data.userHistory[userId] || [];
   }
 
-  public toggleFavorite(id: string): boolean {
-    const item = this.data.history.find(h => h.id === id);
+  public deleteHistoryItem(userId: string, itemId: string): boolean {
+    const items = this.data.userHistory[userId];
+    if (!items) return false;
+    const initialLen = items.length;
+    this.data.userHistory[userId] = items.filter(h => h.id !== itemId);
+    if (this.data.userHistory[userId].length !== initialLen) {
+      this.persist();
+      return true;
+    }
+    return false;
+  }
+
+  public toggleFavorite(userId: string, itemId: string): boolean {
+    const items = this.data.userHistory[userId];
+    if (!items) return false;
+    const item = items.find(h => h.id === itemId);
     if (item) {
       item.isFavorite = !item.isFavorite;
       this.persist();
       return !!item.isFavorite;
     }
     return false;
+  }
+
+  // -------------------------------------------------------------
+  // Manual Bank Transfer Upgrade Requests
+  // -------------------------------------------------------------
+
+  public createUpgradeRequest(
+    userId: string,
+    plan: 'pro' | 'premium',
+    transferReference: string,
+    senderName?: string,
+    notes?: string
+  ): UpgradeRequest {
+    const user = this.data.users[userId];
+    if (!user) throw new Error('User not found');
+
+    const requestId = 'upg_' + crypto.randomUUID().slice(0, 8);
+    const req: UpgradeRequest = {
+      id: requestId,
+      userId,
+      userEmail: user.email,
+      userName: user.name,
+      plan,
+      transferReference: transferReference.trim(),
+      senderName: senderName?.trim(),
+      notes: notes?.trim(),
+      requestedAt: new Date().toISOString(),
+      status: 'pending',
+    };
+
+    this.data.upgradeRequests[requestId] = req;
+    user.pendingUpgrade = req;
+    this.persist();
+    return req;
+  }
+
+  public getPendingUpgrades(): UpgradeRequest[] {
+    return Object.values(this.data.upgradeRequests).sort(
+      (a, b) => new Date(b.requestedAt).getTime() - new Date(a.requestedAt).getTime()
+    );
+  }
+
+  public approveUpgrade(requestId: string, resolutionNote?: string): { user: User; request: UpgradeRequest } {
+    const req = this.data.upgradeRequests[requestId];
+    if (!req) throw new Error('Upgrade request not found');
+
+    const user = this.data.users[req.userId];
+    if (!user) throw new Error('User for this request not found');
+
+    req.status = 'approved';
+    req.resolvedAt = new Date().toISOString();
+    if (resolutionNote) req.resolutionNote = resolutionNote;
+
+    user.plan = req.plan;
+    user.pendingUpgrade = null;
+
+    this.persist();
+    return {
+      user: this.mapUser(user),
+      request: req,
+    };
+  }
+
+  public rejectUpgrade(requestId: string, resolutionNote?: string): { user: User; request: UpgradeRequest } {
+    const req = this.data.upgradeRequests[requestId];
+    if (!req) throw new Error('Upgrade request not found');
+
+    const user = this.data.users[req.userId];
+    if (!user) throw new Error('User for this request not found');
+
+    req.status = 'rejected';
+    req.resolvedAt = new Date().toISOString();
+    if (resolutionNote) req.resolutionNote = resolutionNote;
+
+    user.pendingUpgrade = null;
+
+    this.persist();
+    return {
+      user: this.mapUser(user),
+      request: req,
+    };
+  }
+
+  // -------------------------------------------------------------
+  // Announcements (Dismissible Banner)
+  // -------------------------------------------------------------
+
+  public getAnnouncement(): SystemAnnouncement {
+    return this.data.announcement || DEFAULT_ANNOUNCEMENT;
+  }
+
+  public setAnnouncement(message: string, active: boolean, type: 'info' | 'warning' | 'promo' = 'info'): SystemAnnouncement {
+    const announcement: SystemAnnouncement = {
+      id: 'ann_' + crypto.randomUUID().slice(0, 8),
+      message: message.trim(),
+      active,
+      type,
+      updatedAt: new Date().toISOString(),
+    };
+    this.data.announcement = announcement;
+    this.persist();
+    return announcement;
+  }
+
+  // -------------------------------------------------------------
+  // Bank Transfer Server-Side Configuration (Private to Admin)
+  // -------------------------------------------------------------
+
+  public getBankConfig(): BankConfig {
+    return this.data.bankConfig || DEFAULT_BANK_CONFIG;
+  }
+
+  public setBankConfig(config: BankConfig): BankConfig {
+    this.data.bankConfig = {
+      ...DEFAULT_BANK_CONFIG,
+      ...config,
+    };
+    this.persist();
+    return this.data.bankConfig;
+  }
+
+  // -------------------------------------------------------------
+  // Admin Authentication & Administration
+  // -------------------------------------------------------------
+
+  public verifyAdminPassword(password: string): boolean {
+    const configuredPassword = process.env.ADMIN_PASSWORD || 'admin2026!';
+    return password === configuredPassword;
+  }
+
+  public createAdminSession(): string {
+    const token = 'adm_' + crypto.randomBytes(32).toString('hex');
+    this.data.adminSessions[token] = Date.now();
+    this.persist();
+    return token;
+  }
+
+  public isValidAdminSession(token: string): boolean {
+    if (!token || !token.startsWith('adm_')) return false;
+    const createdAt = this.data.adminSessions[token];
+    if (!createdAt) return false;
+    // Session valid for 7 days
+    const isExpired = Date.now() - createdAt > 7 * 24 * 60 * 60 * 1000;
+    if (isExpired) {
+      delete this.data.adminSessions[token];
+      this.persist();
+      return false;
+    }
+    return true;
+  }
+
+  public revokeAdminSession(token: string): void {
+    if (this.data.adminSessions[token]) {
+      delete this.data.adminSessions[token];
+      this.persist();
+    }
+  }
+
+  public getAllUsers(): Array<{
+    id: string;
+    email: string;
+    name: string;
+    plan: PlanTier;
+    createdAt: string;
+    usedToday: number;
+    pendingUpgrade?: UpgradeRequest | null;
+  }> {
+    const today = this.getTodayUtcString();
+    return Object.values(this.data.users).map(u => {
+      const key = `${u.id}:${today}`;
+      const usedToday = this.data.dailyUsage[key] || 0;
+      const pending = Object.values(this.data.upgradeRequests).find(
+        req => req.userId === u.id && req.status === 'pending'
+      );
+      return {
+        id: u.id,
+        email: u.email,
+        name: u.name,
+        plan: u.plan,
+        createdAt: u.createdAt,
+        usedToday,
+        pendingUpgrade: pending || null,
+      };
+    }).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  }
+
+  public getAdminStats(): AdminStats {
+    const users = Object.values(this.data.users);
+    const today = this.getTodayUtcString();
+    let totalGenerationsToday = 0;
+
+    for (const [key, count] of Object.entries(this.data.dailyUsage)) {
+      if (key.endsWith(`:${today}`)) {
+        totalGenerationsToday += count;
+      }
+    }
+
+    const planCounts = {
+      free: users.filter(u => u.plan === 'free').length,
+      pro: users.filter(u => u.plan === 'pro').length,
+      premium: users.filter(u => u.plan === 'premium').length,
+    };
+
+    const pendingUpgradesCount = Object.values(this.data.upgradeRequests).filter(
+      r => r.status === 'pending'
+    ).length;
+
+    return {
+      totalUsers: users.length,
+      planCounts,
+      totalGenerationsToday,
+      pendingUpgradesCount,
+    };
   }
 }
 

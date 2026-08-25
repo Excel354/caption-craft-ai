@@ -1,21 +1,25 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { User, DailyUsage, PlanTier } from '../types';
+import { User, DailyUsage, PlanTier, SystemAnnouncement, UpgradeRequest } from '../types';
 
 interface AuthContextType {
   user: User | null;
   token: string | null;
   usage: DailyUsage | null;
   loading: boolean;
+  isGuest: boolean;
+  announcement: SystemAnnouncement | null;
+  dismissAnnouncement: () => void;
   login: (email: string, password: string) => Promise<void>;
   register: (email: string, password: string, name?: string) => Promise<void>;
   logout: () => void;
   updateUsage: (newUsage: DailyUsage) => void;
-  changePlan: (plan: PlanTier) => Promise<void>;
   refreshUsage: () => Promise<void>;
+  requestUpgrade: (plan: 'pro' | 'premium', transferReference: string, senderName?: string, notes?: string) => Promise<UpgradeRequest>;
   isAuthModalOpen: boolean;
-  openAuthModal: (mode?: 'login' | 'register') => void;
+  openAuthModal: (mode?: 'login' | 'register', reason?: string) => void;
   closeAuthModal: () => void;
   authModalMode: 'login' | 'register';
+  authModalReason: string | null;
   isUpgradeModalOpen: boolean;
   openUpgradeModal: () => void;
   closeUpgradeModal: () => void;
@@ -28,9 +32,28 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [token, setToken] = useState<string | null>(() => localStorage.getItem('caption_token'));
   const [usage, setUsage] = useState<DailyUsage | null>(null);
   const [loading, setLoading] = useState(true);
+  const [announcement, setAnnouncement] = useState<SystemAnnouncement | null>(null);
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const [authModalMode, setAuthModalMode] = useState<'login' | 'register'>('login');
+  const [authModalReason, setAuthModalReason] = useState<string | null>(null);
   const [isUpgradeModalOpen, setIsUpgradeModalOpen] = useState(false);
+
+  const fetchAnnouncement = async () => {
+    try {
+      const res = await fetch('/api/announcement');
+      if (res.ok) {
+        const data = await res.json();
+        if (data.announcement) {
+          const dismissedId = localStorage.getItem('dismissed_announcement_id');
+          if (dismissedId !== data.announcement.id) {
+            setAnnouncement(data.announcement);
+          }
+        }
+      }
+    } catch {
+      // Non-critical
+    }
+  };
 
   const fetchCurrentUser = async (authToken: string) => {
     try {
@@ -42,42 +65,48 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setUser(data.user);
         setUsage(data.usage);
       } else {
-        // If token invalid, auto-login or seed demo user
-        await loginWithDemo();
+        // Token expired/invalid - remove and stay as guest
+        localStorage.removeItem('caption_token');
+        setToken(null);
+        setUser(null);
+        await fetchGuestUsage();
       }
     } catch {
-      await loginWithDemo();
+      await fetchGuestUsage();
     } finally {
       setLoading(false);
     }
   };
 
-  const loginWithDemo = async () => {
+  const fetchGuestUsage = async () => {
     try {
-      const res = await fetch('/api/auth/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: 'creator@example.com', password: 'password123' }),
-      });
+      const res = await fetch('/api/user/usage');
       if (res.ok) {
         const data = await res.json();
-        setUser(data.user);
-        setToken(data.token);
         setUsage(data.usage);
-        localStorage.setItem('caption_token', data.token);
       }
-    } catch (err) {
-      console.error('Demo login fallback error:', err);
+    } catch {
+      // Fallback
+    } finally {
+      setLoading(false);
     }
   };
 
   useEffect(() => {
+    fetchAnnouncement();
     if (token) {
       fetchCurrentUser(token);
     } else {
-      loginWithDemo().finally(() => setLoading(false));
+      fetchGuestUsage();
     }
   }, []);
+
+  const dismissAnnouncement = () => {
+    if (announcement) {
+      localStorage.setItem('dismissed_announcement_id', announcement.id);
+      setAnnouncement(null);
+    }
+  };
 
   const login = async (email: string, password: string) => {
     const res = await fetch('/api/auth/login', {
@@ -94,6 +123,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setUsage(data.usage);
     localStorage.setItem('caption_token', data.token);
     setIsAuthModalOpen(false);
+    setAuthModalReason(null);
   };
 
   const register = async (email: string, password: string, name?: string) => {
@@ -111,15 +141,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setUsage(data.usage);
     localStorage.setItem('caption_token', data.token);
     setIsAuthModalOpen(false);
+    setAuthModalReason(null);
   };
 
   const logout = () => {
     setUser(null);
     setToken(null);
-    setUsage(null);
     localStorage.removeItem('caption_token');
-    // auto-relog as demo or prompt login
-    loginWithDemo();
+    fetchGuestUsage();
   };
 
   const updateUsage = (newUsage: DailyUsage) => {
@@ -127,11 +156,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const refreshUsage = async () => {
-    if (!token) return;
+    const headers: Record<string, string> = {};
+    if (token) headers['Authorization'] = `Bearer ${token}`;
     try {
-      const res = await fetch('/api/user/usage', {
-        headers: { Authorization: `Bearer ${token}` },
-      });
+      const res = await fetch('/api/user/usage', { headers });
       if (res.ok) {
         const data = await res.json();
         setUsage(data.usage);
@@ -144,31 +172,61 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  const changePlan = async (plan: PlanTier) => {
-    if (!token) return;
-    const res = await fetch('/api/user/plan', {
+  const requestUpgrade = async (
+    plan: 'pro' | 'premium',
+    transferReference: string,
+    senderName?: string,
+    notes?: string
+  ): Promise<UpgradeRequest> => {
+    if (!token || !user) {
+      openAuthModal('register', 'Please create an account or sign in to upgrade to Pro.');
+      throw new Error('Please log in or create an account to request an upgrade.');
+    }
+
+    const res = await fetch('/api/upgrade/request', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         Authorization: `Bearer ${token}`,
       },
-      body: JSON.stringify({ plan }),
+      body: JSON.stringify({
+        plan,
+        transferReference,
+        senderName,
+        notes,
+      }),
     });
+
     const data = await res.json();
-    if (!res.ok) {
-      throw new Error(data.error || 'Failed to update plan');
+    if (!res.ok || !data.success) {
+      throw new Error(data.error || 'Failed to submit upgrade request');
     }
-    setUser(data.user);
-    setUsage(data.usage);
+
+    if (data.user) {
+      setUser(data.user);
+    }
+    return data.request;
   };
 
-  const openAuthModal = (mode: 'login' | 'register' = 'login') => {
+  const openAuthModal = (mode: 'login' | 'register' = 'login', reason?: string) => {
     setAuthModalMode(mode);
+    setAuthModalReason(reason || null);
     setIsAuthModalOpen(true);
   };
 
-  const closeAuthModal = () => setIsAuthModalOpen(false);
-  const openUpgradeModal = () => setIsUpgradeModalOpen(true);
+  const closeAuthModal = () => {
+    setIsAuthModalOpen(false);
+    setAuthModalReason(null);
+  };
+
+  const openUpgradeModal = () => {
+    if (!user || !token) {
+      openAuthModal('register', 'Please log in or create a free account to upgrade to Pro or Premium.');
+      return;
+    }
+    setIsUpgradeModalOpen(true);
+  };
+
   const closeUpgradeModal = () => setIsUpgradeModalOpen(false);
 
   return (
@@ -178,16 +236,20 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         token,
         usage,
         loading,
+        isGuest: !user,
+        announcement,
+        dismissAnnouncement,
         login,
         register,
         logout,
         updateUsage,
-        changePlan,
         refreshUsage,
+        requestUpgrade,
         isAuthModalOpen,
         openAuthModal,
         closeAuthModal,
         authModalMode,
+        authModalReason,
         isUpgradeModalOpen,
         openUpgradeModal,
         closeUpgradeModal,

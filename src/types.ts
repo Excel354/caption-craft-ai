@@ -18,12 +18,28 @@ export interface PlatformConfig {
   badgeBg: string;
 }
 
+export interface UpgradeRequest {
+  id: string;
+  userId: string;
+  userEmail: string;
+  userName: string;
+  plan: 'pro' | 'premium';
+  transferReference: string;
+  senderName?: string;
+  notes?: string;
+  requestedAt: string;
+  status: 'pending' | 'approved' | 'rejected';
+  resolvedAt?: string;
+  resolutionNote?: string;
+}
+
 export interface User {
   id: string;
   email: string;
   name: string;
   plan: PlanTier;
   createdAt: string;
+  pendingUpgrade?: UpgradeRequest | null;
 }
 
 export interface DailyUsage {
@@ -69,6 +85,7 @@ export interface GenerationResponse {
 
 export interface SavedItem {
   id: string;
+  userId?: string;
   topic: string;
   platform: PlatformId;
   caption: string;
@@ -76,3 +93,32 @@ export interface SavedItem {
   createdAt: string;
   isFavorite?: boolean;
 }
+
+export interface SystemAnnouncement {
+  id: string;
+  message: string;
+  active: boolean;
+  type: 'info' | 'warning' | 'promo';
+  updatedAt: string;
+}
+
+export interface BankConfig {
+  bankName: string;
+  accountName: string;
+  accountNumber: string;
+  routingOrIban: string;
+  swiftCode: string;
+  instructions: string;
+}
+
+export interface AdminStats {
+  totalUsers: number;
+  planCounts: {
+    free: number;
+    pro: number;
+    premium: number;
+  };
+  totalGenerationsToday: number;
+  pendingUpgradesCount: number;
+}
+
