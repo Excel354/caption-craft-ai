@@ -27,6 +27,25 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
+async function parseJsonResponse<T = any>(res: Response, defaultError: string): Promise<T> {
+  const rawText = await res.text();
+  let data: any;
+  try {
+    data = rawText ? JSON.parse(rawText) : {};
+  } catch {
+    if (!res.ok) {
+      throw new Error(`Server returned error (${res.status}). Please try again.`);
+    }
+    throw new Error('Unexpected response format from server.');
+  }
+
+  if (!res.ok) {
+    throw new Error(data?.error || defaultError);
+  }
+
+  return data as T;
+}
+
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
   const [token, setToken] = useState<string | null>(() => localStorage.getItem('caption_token'));
@@ -42,8 +61,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       const res = await fetch('/api/announcement');
       if (res.ok) {
-        const data = await res.json();
-        if (data.announcement) {
+        const data = await parseJsonResponse(res, 'Failed to fetch announcement');
+        if (data?.announcement) {
           const dismissedId = localStorage.getItem('dismissed_announcement_id');
           if (dismissedId !== data.announcement.id) {
             setAnnouncement(data.announcement);
@@ -61,7 +80,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         headers: { Authorization: `Bearer ${authToken}` },
       });
       if (res.ok) {
-        const data = await res.json();
+        const data = await parseJsonResponse(res, 'Session expired');
         setUser(data.user);
         setUsage(data.usage);
       } else {
@@ -82,8 +101,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       const res = await fetch('/api/user/usage');
       if (res.ok) {
-        const data = await res.json();
-        setUsage(data.usage);
+        const data = await parseJsonResponse(res, 'Failed to fetch usage');
+        if (data?.usage) {
+          setUsage(data.usage);
+        }
       }
     } catch {
       // Fallback
@@ -114,10 +135,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ email, password }),
     });
-    const data = await res.json();
-    if (!res.ok) {
-      throw new Error(data.error || 'Login failed');
-    }
+    const data = await parseJsonResponse(res, 'Login failed. Please check your credentials.');
     setUser(data.user);
     setToken(data.token);
     setUsage(data.usage);
@@ -132,10 +150,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ email, password, name }),
     });
-    const data = await res.json();
-    if (!res.ok) {
-      throw new Error(data.error || 'Registration failed');
-    }
+    const data = await parseJsonResponse(res, 'Registration failed. Please check your details.');
     setUser(data.user);
     setToken(data.token);
     setUsage(data.usage);
@@ -161,8 +176,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       const res = await fetch('/api/user/usage', { headers });
       if (res.ok) {
-        const data = await res.json();
-        setUsage(data.usage);
+        const data = await parseJsonResponse(res, 'Failed to update usage');
+        if (data?.usage) {
+          setUsage(data.usage);
+        }
         if (user && data.plan) {
           setUser({ ...user, plan: data.plan });
         }
@@ -197,8 +214,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }),
     });
 
-    const data = await res.json();
-    if (!res.ok || !data.success) {
+    const data = await parseJsonResponse(res, 'Failed to submit upgrade request');
+    if (!data.success) {
       throw new Error(data.error || 'Failed to submit upgrade request');
     }
 

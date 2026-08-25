@@ -448,6 +448,22 @@ app.post('/api/admin/bank-config', requireAdminAuth, (req: Request, res: Respons
 });
 
 // -------------------------------------------------------------
+// API 404 & Global JSON Error Handlers
+// -------------------------------------------------------------
+
+app.all('/api/*', (req: Request, res: Response) => {
+  res.status(404).json({ error: `API endpoint not found: ${req.method} ${req.path}` });
+});
+
+app.use((err: any, req: Request, res: Response, next: NextFunction) => {
+  console.error('Unhandled server error:', err);
+  if (res.headersSent) {
+    return next(err);
+  }
+  res.status(err.status || 500).json({ error: err.message || 'Internal server error occurred' });
+});
+
+// -------------------------------------------------------------
 // Server Start & Vite SPA Handler
 // -------------------------------------------------------------
 
