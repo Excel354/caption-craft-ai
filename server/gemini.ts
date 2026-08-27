@@ -2,20 +2,27 @@ import { GoogleGenAI, Type } from '@google/genai';
 import { CaptionVariation, PlatformId } from '../src/types';
 import { PLATFORMS } from '../src/constants/platforms';
 
-let aiClient: GoogleGenAI | null = null;
+function getApiKey(): string {
+  return (
+    process.env.GEMINI_API_KEY ||
+    process.env.GOOGLE_API_KEY ||
+    process.env.GOOGLE_GENAI_API_KEY ||
+    process.env.VITE_GEMINI_API_KEY ||
+    process.env.API_KEY ||
+    ''
+  ).trim();
+}
 
 function getAiClient(): GoogleGenAI {
-  if (!aiClient) {
-    aiClient = new GoogleGenAI({
-      apiKey: process.env.GEMINI_API_KEY,
-      httpOptions: {
-        headers: {
-          'User-Agent': 'aistudio-build',
-        },
+  const key = getApiKey();
+  return new GoogleGenAI({
+    apiKey: key,
+    httpOptions: {
+      headers: {
+        'User-Agent': 'aistudio-build',
       },
-    });
-  }
-  return aiClient;
+    },
+  });
 }
 
 export interface GenerateCaptionsParams {
