@@ -1,8 +1,8 @@
 import crypto from 'crypto';
 import fs from 'fs';
 import path from 'path';
-import { PlanTier, User, DailyUsage, SavedItem, UpgradeRequest, SystemAnnouncement, BankConfig, AdminStats } from '../src/types';
-import { PLAN_LIMITS } from '../src/constants/platforms';
+import { PlanTier, User, DailyUsage, SavedItem, UpgradeRequest, SystemAnnouncement, BankConfig, AdminStats, AdminUserItem } from '../src/types';
+import { PLAN_LIMITS, PREMIUM_FAIR_USE_SOFT_CAP, DEFAULT_BANK_DETAILS } from '../src/constants/platforms';
 
 interface StoredUser extends User {
   passwordHash: string;
@@ -15,13 +15,23 @@ interface StoredSession {
   createdAt: number;
 }
 
+interface DetailedUsageStats {
+  count: number;
+  realGeminiCalls: number;
+  cachedCalls: number;
+  fallbackCalls: number;
+  repeatedNudgeCount: number;
+}
+
 interface DatabaseSchema {
   users: Record<string, StoredUser>;
   sessions: Record<string, StoredSession>;
   dailyUsage: Record<string, number>; // key: `${userId}:${YYYY-MM-DD}`
+  dailyUsageDetails: Record<string, DetailedUsageStats>; // key: `${userId}:${YYYY-MM-DD}`
   userHistory: Record<string, SavedItem[]>; // key: userId
   upgradeRequests: Record<string, UpgradeRequest>; // key: requestId
   announcement: SystemAnnouncement;
+  announcementsList: SystemAnnouncement[]; // Persistent history
   bankConfig: BankConfig;
   adminSessions: Record<string, number>; // token -> timestamp
   // Legacy migration compatibility
@@ -32,19 +42,18 @@ const DATA_DIR = path.join(process.cwd(), 'data');
 const DB_FILE = path.join(DATA_DIR, 'db.json');
 
 const DEFAULT_BANK_CONFIG: BankConfig = {
-  bankName: 'Silicon Global Commercial Bank',
-  accountName: 'Caption Generator Technologies LLC',
-  accountNumber: '••••••••8492',
-  routingOrIban: '021000021 / US89SGCB0210000218492',
-  swiftCode: 'SGCBUS33',
-  instructions: 'Please include your Account Email and Plan Name in the bank transfer reference note.',
+  bankName: DEFAULT_BANK_DETAILS.bankName,
+  accountName: DEFAULT_BANK_DETAILS.accountName,
+  accountNumber: DEFAULT_BANK_DETAILS.accountNumber,
+  instructions: DEFAULT_BANK_DETAILS.instructions,
 };
 
 const DEFAULT_ANNOUNCEMENT: SystemAnnouncement = {
   id: 'ann_initial',
-  message: '🚀 Welcome to Caption Generator Pro! Manual bank transfer upgrades are reviewed instantly by our team.',
+  message: '🚀 Welcome to Caption Generator Pro! Manual bank transfer upgrades are reviewed promptly by our administration team.',
   active: true,
   type: 'promo',
+  createdAt: new Date().toISOString(),
   updatedAt: new Date().toISOString(),
 };
 
@@ -53,9 +62,11 @@ class Database {
     users: {},
     sessions: {},
     dailyUsage: {},
+    dailyUsageDetails: {},
     userHistory: {},
     upgradeRequests: {},
     announcement: DEFAULT_ANNOUNCEMENT,
+    announcementsList: [DEFAULT_ANNOUNCEMENT],
     bankConfig: DEFAULT_BANK_CONFIG,
     adminSessions: {},
   };
@@ -77,10 +88,18 @@ class Database {
         this.data = {
           ...this.data,
           ...parsed,
+          dailyUsage: parsed.dailyUsage || {},
+          dailyUsageDetails: parsed.dailyUsageDetails || {},
           userHistory: parsed.userHistory || {},
           upgradeRequests: parsed.upgradeRequests || {},
           announcement: parsed.announcement || DEFAULT_ANNOUNCEMENT,
-          bankConfig: parsed.bankConfig || DEFAULT_BANK_CONFIG,
+          announcementsList: Array.isArray(parsed.announcementsList) && parsed.announcementsList.length > 0
+            ? parsed.announcementsList
+            : [parsed.announcement || DEFAULT_ANNOUNCEMENT],
+          bankConfig: {
+            ...DEFAULT_BANK_CONFIG,
+            ...(parsed.bankConfig || {}),
+          },
           adminSessions: parsed.adminSessions || {},
         };
         // Migrate legacy global history to default user if present
@@ -128,6 +147,7 @@ class Database {
         passwordHash: hash,
         passwordSalt: salt,
         createdAt: new Date().toISOString(),
+        isSuspended: false,
       };
       this.data.users[user.id] = user;
     }
@@ -152,6 +172,7 @@ class Database {
         passwordHash: hash,
         passwordSalt: salt,
         createdAt: new Date().toISOString(),
+        isSuspended: false,
       };
       this.data.users[id] = newUser;
       this.persist();
@@ -162,7 +183,7 @@ class Database {
 
   public getTodayUtcString(): string {
     const now = new Date();
-    return now.toISOString().split('T')[0]; // e.g. "2026-08-25"
+    return now.toISOString().split('T')[0]; // e.g. "2026-08-27"
   }
 
   public getNextMidnightUtcIso(): string {
@@ -183,6 +204,8 @@ class Database {
       name: stored.name,
       plan: stored.plan,
       createdAt: stored.createdAt,
+      isSuspended: !!stored.isSuspended,
+      suspendedAt: stored.suspendedAt,
       pendingUpgrade: pendingUpgrade || null,
     };
   }
@@ -206,6 +229,7 @@ class Database {
       passwordHash: hash,
       passwordSalt: salt,
       createdAt: new Date().toISOString(),
+      isSuspended: false,
     };
 
     this.data.users[id] = user;
@@ -272,6 +296,24 @@ class Database {
     return this.mapUser(user);
   }
 
+  public suspendUser(userId: string): User {
+    const user = this.data.users[userId];
+    if (!user) throw new Error('User not found.');
+    user.isSuspended = true;
+    user.suspendedAt = new Date().toISOString();
+    this.persist();
+    return this.mapUser(user);
+  }
+
+  public unsuspendUser(userId: string): User {
+    const user = this.data.users[userId];
+    if (!user) throw new Error('User not found.');
+    user.isSuspended = false;
+    delete user.suspendedAt;
+    this.persist();
+    return this.mapUser(user);
+  }
+
   public getDailyUsage(userId: string): DailyUsage {
     const user = this.data.users[userId];
     const plan: PlanTier = user ? user.plan : 'free';
@@ -279,6 +321,13 @@ class Database {
     const today = this.getTodayUtcString();
     const key = `${userId}:${today}`;
     const count = this.data.dailyUsage[key] || 0;
+    const details = this.data.dailyUsageDetails[key] || {
+      count,
+      realGeminiCalls: 0,
+      cachedCalls: 0,
+      fallbackCalls: 0,
+      repeatedNudgeCount: 0,
+    };
 
     const remaining = limit === -1 ? 999999 : Math.max(0, limit - count);
 
@@ -288,7 +337,33 @@ class Database {
       count,
       limit,
       remaining,
+      realGeminiCalls: details.realGeminiCalls,
+      cachedCalls: details.cachedCalls,
+      fallbackCalls: details.fallbackCalls,
+      repeatedNudgeCount: details.repeatedNudgeCount,
     };
+  }
+
+  public recordUsageMetric(userId: string, type: 'real' | 'cached' | 'fallback' | 'repeated_nudge'): void {
+    const today = this.getTodayUtcString();
+    const key = `${userId}:${today}`;
+    if (!this.data.dailyUsageDetails[key]) {
+      this.data.dailyUsageDetails[key] = {
+        count: this.data.dailyUsage[key] || 0,
+        realGeminiCalls: 0,
+        cachedCalls: 0,
+        fallbackCalls: 0,
+        repeatedNudgeCount: 0,
+      };
+    }
+
+    const detail = this.data.dailyUsageDetails[key];
+    if (type === 'real') detail.realGeminiCalls += 1;
+    if (type === 'cached') detail.cachedCalls += 1;
+    if (type === 'fallback') detail.fallbackCalls += 1;
+    if (type === 'repeated_nudge') detail.repeatedNudgeCount += 1;
+
+    this.persist();
   }
 
   public async checkAndIncrementUsage(userId: string): Promise<{
@@ -298,10 +373,25 @@ class Database {
     remaining: number;
     plan: PlanTier;
     resetsAtUtc: string;
+    isSuspended?: boolean;
+    isFairUseCapped?: boolean;
   }> {
     return new Promise(resolve => {
       this.lock = this.lock.then(async () => {
         const user = this.data.users[userId];
+        if (user && user.isSuspended) {
+          resolve({
+            allowed: false,
+            count: 0,
+            limit: 0,
+            remaining: 0,
+            plan: user.plan,
+            resetsAtUtc: this.getNextMidnightUtcIso(),
+            isSuspended: true,
+          });
+          return;
+        }
+
         const plan: PlanTier = user ? user.plan : 'free';
         const limit = PLAN_LIMITS[plan];
         const today = this.getTodayUtcString();
@@ -309,6 +399,7 @@ class Database {
         const currentCount = this.data.dailyUsage[key] || 0;
         const resetsAtUtc = this.getNextMidnightUtcIso();
 
+        // Check standard limits
         if (limit !== -1 && currentCount >= limit) {
           resolve({
             allowed: false,
@@ -321,8 +412,34 @@ class Database {
           return;
         }
 
+        // Silent server-side fair-use safeguard for Premium (150/day)
+        if (limit === -1 && currentCount >= PREMIUM_FAIR_USE_SOFT_CAP) {
+          resolve({
+            allowed: false,
+            count: currentCount,
+            limit,
+            remaining: 0,
+            plan,
+            resetsAtUtc,
+            isFairUseCapped: true,
+          });
+          return;
+        }
+
         const newCount = currentCount + 1;
         this.data.dailyUsage[key] = newCount;
+        if (!this.data.dailyUsageDetails[key]) {
+          this.data.dailyUsageDetails[key] = {
+            count: newCount,
+            realGeminiCalls: 0,
+            cachedCalls: 0,
+            fallbackCalls: 0,
+            repeatedNudgeCount: 0,
+          };
+        } else {
+          this.data.dailyUsageDetails[key].count = newCount;
+        }
+
         this.persist();
 
         const remaining = limit === -1 ? 999999 : Math.max(0, limit - newCount);
@@ -344,6 +461,9 @@ class Database {
     const key = `${userId}:${today}`;
     if (this.data.dailyUsage[key] && this.data.dailyUsage[key] > 0) {
       this.data.dailyUsage[key] = Math.max(0, this.data.dailyUsage[key] - 1);
+      if (this.data.dailyUsageDetails[key]) {
+        this.data.dailyUsageDetails[key].count = this.data.dailyUsage[key];
+      }
       this.persist();
     }
   }
@@ -410,7 +530,7 @@ class Database {
     userId: string,
     plan: 'pro' | 'premium',
     transferReference: string,
-    senderName?: string,
+    senderName: string,
     notes?: string
   ): UpgradeRequest {
     const user = this.data.users[userId];
@@ -424,7 +544,7 @@ class Database {
       userName: user.name,
       plan,
       transferReference: transferReference.trim(),
-      senderName: senderName?.trim(),
+      senderName: senderName.trim(),
       notes: notes?.trim(),
       requestedAt: new Date().toISOString(),
       status: 'pending',
@@ -436,10 +556,22 @@ class Database {
     return req;
   }
 
-  public getPendingUpgrades(): UpgradeRequest[] {
+  public getAllUpgradeRequests(): UpgradeRequest[] {
     return Object.values(this.data.upgradeRequests).sort(
       (a, b) => new Date(b.requestedAt).getTime() - new Date(a.requestedAt).getTime()
     );
+  }
+
+  public getPendingUpgrades(): UpgradeRequest[] {
+    return Object.values(this.data.upgradeRequests)
+      .filter(r => r.status === 'pending')
+      .sort((a, b) => new Date(b.requestedAt).getTime() - new Date(a.requestedAt).getTime());
+  }
+
+  public getResolvedUpgrades(): UpgradeRequest[] {
+    return Object.values(this.data.upgradeRequests)
+      .filter(r => r.status === 'approved' || r.status === 'rejected')
+      .sort((a, b) => new Date(b.resolvedAt || b.requestedAt).getTime() - new Date(a.resolvedAt || a.requestedAt).getTime());
   }
 
   public approveUpgrade(requestId: string, resolutionNote?: string): { user: User; request: UpgradeRequest } {
@@ -484,22 +616,39 @@ class Database {
   }
 
   // -------------------------------------------------------------
-  // Announcements (Dismissible Banner)
+  // Announcements & Persistent Messages Inbox
   // -------------------------------------------------------------
 
   public getAnnouncement(): SystemAnnouncement {
     return this.data.announcement || DEFAULT_ANNOUNCEMENT;
   }
 
+  public getAllAnnouncements(): SystemAnnouncement[] {
+    const list = this.data.announcementsList || [this.data.announcement || DEFAULT_ANNOUNCEMENT];
+    return [...list].sort(
+      (a, b) => new Date(b.createdAt || b.updatedAt).getTime() - new Date(a.createdAt || a.updatedAt).getTime()
+    );
+  }
+
   public setAnnouncement(message: string, active: boolean, type: 'info' | 'warning' | 'promo' = 'info'): SystemAnnouncement {
+    const now = new Date().toISOString();
     const announcement: SystemAnnouncement = {
       id: 'ann_' + crypto.randomUUID().slice(0, 8),
       message: message.trim(),
       active,
       type,
-      updatedAt: new Date().toISOString(),
+      createdAt: now,
+      updatedAt: now,
     };
     this.data.announcement = announcement;
+    if (!this.data.announcementsList) {
+      this.data.announcementsList = [];
+    }
+    this.data.announcementsList.unshift(announcement);
+    // Keep max 50 announcements
+    if (this.data.announcementsList.length > 50) {
+      this.data.announcementsList = this.data.announcementsList.slice(0, 50);
+    }
     this.persist();
     return announcement;
   }
@@ -512,9 +661,10 @@ class Database {
     return this.data.bankConfig || DEFAULT_BANK_CONFIG;
   }
 
-  public setBankConfig(config: BankConfig): BankConfig {
+  public setBankConfig(config: Partial<BankConfig>): BankConfig {
     this.data.bankConfig = {
       ...DEFAULT_BANK_CONFIG,
+      ...this.data.bankConfig,
       ...config,
     };
     this.persist();
@@ -558,19 +708,18 @@ class Database {
     }
   }
 
-  public getAllUsers(): Array<{
-    id: string;
-    email: string;
-    name: string;
-    plan: PlanTier;
-    createdAt: string;
-    usedToday: number;
-    pendingUpgrade?: UpgradeRequest | null;
-  }> {
+  public getAllUsers(): AdminUserItem[] {
     const today = this.getTodayUtcString();
     return Object.values(this.data.users).map(u => {
       const key = `${u.id}:${today}`;
       const usedToday = this.data.dailyUsage[key] || 0;
+      const details = this.data.dailyUsageDetails[key] || {
+        count: usedToday,
+        realGeminiCalls: 0,
+        cachedCalls: 0,
+        fallbackCalls: 0,
+        repeatedNudgeCount: 0,
+      };
       const pending = Object.values(this.data.upgradeRequests).find(
         req => req.userId === u.id && req.status === 'pending'
       );
@@ -581,6 +730,11 @@ class Database {
         plan: u.plan,
         createdAt: u.createdAt,
         usedToday,
+        realCallsToday: details.realGeminiCalls,
+        cachedCallsToday: details.cachedCalls,
+        repeatedNudgeCount: details.repeatedNudgeCount,
+        isSuspended: !!u.isSuspended,
+        suspendedAt: u.suspendedAt,
         pendingUpgrade: pending || null,
       };
     }).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
@@ -590,10 +744,21 @@ class Database {
     const users = Object.values(this.data.users);
     const today = this.getTodayUtcString();
     let totalGenerationsToday = 0;
+    let totalRealGeminiCallsToday = 0;
+    let totalCachedCallsToday = 0;
+    let totalFallbackCallsToday = 0;
 
     for (const [key, count] of Object.entries(this.data.dailyUsage)) {
       if (key.endsWith(`:${today}`)) {
         totalGenerationsToday += count;
+      }
+    }
+
+    for (const [key, details] of Object.entries(this.data.dailyUsageDetails)) {
+      if (key.endsWith(`:${today}`)) {
+        totalRealGeminiCallsToday += details.realGeminiCalls || 0;
+        totalCachedCallsToday += details.cachedCalls || 0;
+        totalFallbackCallsToday += details.fallbackCalls || 0;
       }
     }
 
@@ -607,11 +772,17 @@ class Database {
       r => r.status === 'pending'
     ).length;
 
+    const suspendedUsersCount = users.filter(u => !!u.isSuspended).length;
+
     return {
       totalUsers: users.length,
       planCounts,
       totalGenerationsToday,
+      totalRealGeminiCallsToday,
+      totalCachedCallsToday,
+      totalFallbackCallsToday,
       pendingUpgradesCount,
+      suspendedUsersCount,
     };
   }
 }

@@ -79,6 +79,16 @@ export function requireAdminAuth(req: Request, res: Response, next: NextFunction
   next();
 }
 
+// In-memory duplicate request cache (10 min TTL)
+interface GenerationCacheEntry {
+  captions: any[];
+  hashtags: string[];
+  platform: PlatformId;
+  timestamp: number;
+  userId: string;
+}
+const generationCache = new Map<string, GenerationCacheEntry>();
+
 // Create dedicated API router
 const apiRouter = express.Router();
 
@@ -97,6 +107,11 @@ apiRouter.get('/announcement', (req: Request, res: Response) => {
   } else {
     res.json({ announcement: null });
   }
+});
+
+apiRouter.get('/announcements', (req: Request, res: Response) => {
+  const announcements = db.getAllAnnouncements();
+  res.json({ announcements });
 });
 
 // -------------------------------------------------------------
@@ -195,12 +210,17 @@ apiRouter.post('/upgrade/request', requireStrictUserAuth, (req: AuthenticatedReq
     const { plan, transferReference, senderName, notes } = req.body as {
       plan: 'pro' | 'premium';
       transferReference: string;
-      senderName?: string;
+      senderName: string;
       notes?: string;
     };
 
     if (!plan || !['pro', 'premium'].includes(plan)) {
       res.status(400).json({ error: 'Please select a valid tier (Pro or Premium).' });
+      return;
+    }
+
+    if (!senderName || !senderName.trim()) {
+      res.status(400).json({ error: 'Please enter the account name the transfer was sent from.' });
       return;
     }
 
@@ -246,8 +266,33 @@ apiRouter.post('/generate', optionalOrGuestAuth, async (req: AuthenticatedReques
   const validPlatforms: PlatformId[] = ['instagram', 'tiktok', 'x', 'facebook', 'linkedin'];
   const selectedPlatform = validPlatforms.includes(platform) ? platform : 'instagram';
 
-  // Check and increment quota
+  // Check user suspension or quota
   const quotaCheck = await db.checkAndIncrementUsage(userId);
+
+  if (quotaCheck.isSuspended) {
+    res.status(403).json({
+      success: false,
+      isSuspended: true,
+      error: 'Your account is temporarily paused. Contact support if you think this is a mistake.',
+    });
+    return;
+  }
+
+  if (quotaCheck.isFairUseCapped) {
+    res.status(429).json({
+      success: false,
+      quotaExceeded: true,
+      error: 'Daily generation fair-use threshold reached (150/day). Limits reset at midnight UTC.',
+      usage: {
+        usedToday: quotaCheck.count,
+        limit: quotaCheck.limit,
+        remaining: 0,
+        plan: quotaCheck.plan,
+        resetsAtUtc: quotaCheck.resetsAtUtc,
+      },
+    });
+    return;
+  }
 
   if (!quotaCheck.allowed) {
     res.status(429).json({
@@ -267,6 +312,35 @@ apiRouter.post('/generate', optionalOrGuestAuth, async (req: AuthenticatedReques
     return;
   }
 
+  // Duplicate / Repeated Idea Cache Check (10 minutes window)
+  const normalizedTopic = topic.trim().toLowerCase();
+  const cacheKey = `${userId}:${selectedPlatform}:${!!includeEmojis}:${(tone || 'default').toLowerCase()}:${normalizedTopic}`;
+  const cachedHit = generationCache.get(cacheKey);
+
+  if (cachedHit && Date.now() - cachedHit.timestamp < 10 * 60 * 1000) {
+    // Record cached call & repeated idea nudge metric for user insights
+    db.recordUsageMetric(userId, 'cached');
+    db.recordUsageMetric(userId, 'repeated_nudge');
+
+    res.json({
+      success: true,
+      isFallback: false,
+      isCached: true,
+      captions: cachedHit.captions,
+      hashtags: cachedHit.hashtags,
+      platform: selectedPlatform,
+      isGuest,
+      usage: {
+        usedToday: quotaCheck.count,
+        limit: quotaCheck.limit,
+        remaining: quotaCheck.remaining,
+        plan: quotaCheck.plan,
+        resetsAtUtc: quotaCheck.resetsAtUtc,
+      },
+    });
+    return;
+  }
+
   try {
     const result = await generateSocialCaptions({
       topic: topic.trim(),
@@ -276,7 +350,45 @@ apiRouter.post('/generate', optionalOrGuestAuth, async (req: AuthenticatedReques
       customContext,
     });
 
-    // Save batch to user's history ONLY if logged in (guests do NOT have captions saved)
+    if (result.isFallback) {
+      // Do NOT charge quota for fallback-only generations
+      db.rollbackUsage(userId);
+      db.recordUsageMetric(userId, 'fallback');
+      const freshUsage = db.getDailyUsage(userId);
+      const remainingQuota = quotaCheck.limit === -1 ? 9999 : Math.max(0, quotaCheck.limit - freshUsage.count);
+
+      res.json({
+        success: true,
+        isFallback: true,
+        fallbackReason: result.fallbackReason || 'high_demand',
+        captions: result.captions,
+        hashtags: result.hashtags,
+        platform: selectedPlatform,
+        isGuest,
+        usage: {
+          usedToday: freshUsage.count,
+          limit: quotaCheck.limit,
+          remaining: remainingQuota,
+          plan: quotaCheck.plan,
+          resetsAtUtc: quotaCheck.resetsAtUtc,
+        },
+      });
+      return;
+    }
+
+    // Record real Gemini API call metric
+    db.recordUsageMetric(userId, 'real');
+
+    // Populate memory cache
+    generationCache.set(cacheKey, {
+      captions: result.captions,
+      hashtags: result.hashtags,
+      platform: selectedPlatform,
+      timestamp: Date.now(),
+      userId,
+    });
+
+    // Save batch to user's history ONLY if logged in and real AI generation
     if (!isGuest) {
       db.addHistory(userId, {
         topic: topic.trim(),
@@ -288,6 +400,7 @@ apiRouter.post('/generate', optionalOrGuestAuth, async (req: AuthenticatedReques
 
     res.json({
       success: true,
+      isFallback: false,
       captions: result.captions,
       hashtags: result.hashtags,
       platform: selectedPlatform,
@@ -392,9 +505,31 @@ apiRouter.get('/admin/users', requireAdminAuth, (req: Request, res: Response) =>
   res.json({ users });
 });
 
+apiRouter.post('/admin/users/:id/suspend', requireAdminAuth, (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const updated = db.suspendUser(id);
+    res.json({ success: true, user: updated });
+  } catch (err: any) {
+    res.status(400).json({ error: err.message || 'Failed to suspend user' });
+  }
+});
+
+apiRouter.post('/admin/users/:id/unsuspend', requireAdminAuth, (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const updated = db.unsuspendUser(id);
+    res.json({ success: true, user: updated });
+  } catch (err: any) {
+    res.status(400).json({ error: err.message || 'Failed to unsuspend user' });
+  }
+});
+
 apiRouter.get('/admin/upgrades', requireAdminAuth, (req: Request, res: Response) => {
-  const upgrades = db.getPendingUpgrades();
-  res.json({ upgrades });
+  const pending = db.getPendingUpgrades();
+  const resolved = db.getResolvedUpgrades();
+  const all = db.getAllUpgradeRequests();
+  res.json({ pending, resolved, all, upgrades: all });
 });
 
 apiRouter.post('/admin/upgrades/:id/approve', requireAdminAuth, (req: Request, res: Response) => {
@@ -421,7 +556,8 @@ apiRouter.post('/admin/upgrades/:id/reject', requireAdminAuth, (req: Request, re
 
 apiRouter.get('/admin/announcement', requireAdminAuth, (req: Request, res: Response) => {
   const announcement = db.getAnnouncement();
-  res.json({ announcement });
+  const announcements = db.getAllAnnouncements();
+  res.json({ announcement, announcements });
 });
 
 apiRouter.post('/admin/announcement', requireAdminAuth, (req: Request, res: Response) => {
@@ -431,7 +567,8 @@ apiRouter.post('/admin/announcement', requireAdminAuth, (req: Request, res: Resp
     return;
   }
   const announcement = db.setAnnouncement(message, !!active, type || 'info');
-  res.json({ success: true, announcement });
+  const announcements = db.getAllAnnouncements();
+  res.json({ success: true, announcement, announcements });
 });
 
 apiRouter.get('/admin/bank-config', requireAdminAuth, (req: Request, res: Response) => {
@@ -440,13 +577,11 @@ apiRouter.get('/admin/bank-config', requireAdminAuth, (req: Request, res: Respon
 });
 
 apiRouter.post('/admin/bank-config', requireAdminAuth, (req: Request, res: Response) => {
-  const { bankName, accountName, accountNumber, routingOrIban, swiftCode, instructions } = req.body;
+  const { bankName, accountName, accountNumber, instructions } = req.body;
   const updated = db.setBankConfig({
     bankName: bankName || '',
     accountName: accountName || '',
     accountNumber: accountNumber || '',
-    routingOrIban: routingOrIban || '',
-    swiftCode: swiftCode || '',
     instructions: instructions || '',
   });
   res.json({ success: true, bankConfig: updated });

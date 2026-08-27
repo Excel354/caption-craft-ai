@@ -33,8 +33,15 @@ export interface GenerateCaptionsParams {
   customContext?: string;
 }
 
-// Candidate models in priority order according to official @google/genai guidelines
-const MODEL_CASCADE = ['gemini-3.7-flash', 'gemini-flash-latest'];
+export interface SocialCaptionsResult {
+  captions: CaptionVariation[];
+  hashtags: string[];
+  isFallback: boolean;
+  fallbackReason?: 'high_demand' | 'api_error' | 'no_key';
+}
+
+// Candidate models in priority order: newest model -> next newest -> stable fallback
+const MODEL_CASCADE = ['gemini-3.7-flash', 'gemini-2.5-flash', 'gemini-flash-latest'];
 
 function isRetryableError(error: any): boolean {
   const errMsg = (error?.message || error?.toString() || '').toLowerCase();
@@ -220,12 +227,20 @@ function generateSynthesizedCaptions(params: GenerateCaptionsParams): {
   };
 }
 
-export async function generateSocialCaptions(params: GenerateCaptionsParams): Promise<{
-  captions: CaptionVariation[];
-  hashtags: string[];
-}> {
+export async function generateSocialCaptions(params: GenerateCaptionsParams): Promise<SocialCaptionsResult> {
   const { topic, platform, includeEmojis, tone, customContext } = params;
   const platformConfig = PLATFORMS[platform] || PLATFORMS.instagram;
+
+  const key = getApiKey();
+  if (!key) {
+    console.warn('[Gemini API] No GEMINI_API_KEY detected. Utilizing starter template synthesis fallback.');
+    const fallbackResult = generateSynthesizedCaptions(params);
+    return {
+      ...fallbackResult,
+      isFallback: true,
+      fallbackReason: 'no_key',
+    };
+  }
 
   const ai = getAiClient();
 
@@ -268,168 +283,183 @@ ${customContext ? `Additional Context: "${customContext.trim()}"` : ''}
 Generate 4 varied captions strictly adhering to the platform character constraints (Hard limit: ${platformConfig.hardLimit} chars, ideal: ${platformConfig.idealRange}) and ${platformConfig.hashtagMin}-${platformConfig.hashtagMax} curated hashtags.`;
 
   let lastError: any = null;
+  const startTime = Date.now();
 
-  // Try candidate models in cascade order with backoff retries
-  for (const model of MODEL_CASCADE) {
-    const maxRetries = 2; // Up to 2 attempts per model
-    for (let attempt = 1; attempt <= maxRetries; attempt++) {
-      try {
-        const response = await ai.models.generateContent({
-          model,
-          contents: prompt,
-          config: {
-            systemInstruction,
-            temperature: 0.85,
-            responseMimeType: 'application/json',
-            responseSchema: {
-              type: Type.OBJECT,
-              properties: {
-                captions: {
-                  type: Type.ARRAY,
-                  items: {
-                    type: Type.OBJECT,
-                    properties: {
-                      text: {
-                        type: Type.STRING,
-                        description: 'The complete ready-to-use social media caption.',
-                      },
-                      hook: {
-                        type: Type.STRING,
-                        description: 'The opening hook line.',
-                      },
-                      toneLabel: {
-                        type: Type.STRING,
-                        description: 'Brief label for this variation angle, e.g. "Hook-Driven", "Punchy & Direct", "Storytelling", "Discussion Starter".',
-                      },
-                      callToAction: {
-                        type: Type.STRING,
-                        description: 'The suggested call-to-action.',
-                      },
-                    },
-                    required: ['text', 'toneLabel'],
-                  },
-                },
-                hashtags: {
-                  type: Type.ARRAY,
-                  items: {
+  const executeModelAttempt = async (model: string): Promise<SocialCaptionsResult> => {
+    const response = await ai.models.generateContent({
+      model,
+      contents: prompt,
+      config: {
+        systemInstruction,
+        temperature: 0.85,
+        responseMimeType: 'application/json',
+        responseSchema: {
+          type: Type.OBJECT,
+          properties: {
+            captions: {
+              type: Type.ARRAY,
+              items: {
+                type: Type.OBJECT,
+                properties: {
+                  text: {
                     type: Type.STRING,
+                    description: 'The complete ready-to-use social media caption.',
                   },
-                  description: `List of ${platformConfig.hashtagMin} to ${platformConfig.hashtagMax} relevant hashtags without or with # prefix.`,
+                  hook: {
+                    type: Type.STRING,
+                    description: 'The opening hook line.',
+                  },
+                  toneLabel: {
+                    type: Type.STRING,
+                    description: 'Brief label for this variation angle, e.g. "Hook-Driven", "Punchy & Direct", "Storytelling", "Discussion Starter".',
+                  },
+                  callToAction: {
+                    type: Type.STRING,
+                    description: 'The suggested call-to-action.',
+                  },
                 },
+                required: ['text', 'toneLabel'],
               },
-              required: ['captions', 'hashtags'],
+            },
+            hashtags: {
+              type: Type.ARRAY,
+              items: {
+                type: Type.STRING,
+              },
+              description: `List of ${platformConfig.hashtagMin} to ${platformConfig.hashtagMax} relevant hashtags without or with # prefix.`,
             },
           },
-        });
+          required: ['captions', 'hashtags'],
+        },
+      },
+    });
 
-        let rawText = response.text || '{}';
-        // Strip markdown fences if present
-        if (rawText.startsWith('```json')) {
-          rawText = rawText.replace(/^```json\s*/, '').replace(/```\s*$/, '').trim();
-        } else if (rawText.startsWith('```')) {
-          rawText = rawText.replace(/^```\s*/, '').replace(/```\s*$/, '').trim();
-        }
+    let rawText = response.text || '{}';
+    if (rawText.startsWith('```json')) {
+      rawText = rawText.replace(/^```json\s*/, '').replace(/```\s*$/, '').trim();
+    } else if (rawText.startsWith('```')) {
+      rawText = rawText.replace(/^```\s*/, '').replace(/```\s*$/, '').trim();
+    }
 
-        let parsed: any;
-        try {
-          parsed = JSON.parse(rawText);
-        } catch {
-          const match = rawText.match(/\{[\s\S]*\}/);
-          if (match) {
-            parsed = JSON.parse(match[0]);
-          } else {
-            throw new Error('Invalid JSON received from AI model');
-          }
-        }
+    let parsed: any;
+    try {
+      parsed = JSON.parse(rawText);
+    } catch {
+      const match = rawText.match(/\{[\s\S]*\}/);
+      if (match) {
+        parsed = JSON.parse(match[0]);
+      } else {
+        throw new Error('Invalid JSON received from AI model');
+      }
+    }
 
-        const rawCaptions: Array<{ text: string; hook?: string; toneLabel?: string; callToAction?: string }> =
-          Array.isArray(parsed.captions) ? parsed.captions : [];
+    const rawCaptions: Array<{ text: string; hook?: string; toneLabel?: string; callToAction?: string }> =
+      Array.isArray(parsed.captions) ? parsed.captions : [];
 
-        const rawHashtags: string[] = Array.isArray(parsed.hashtags) ? parsed.hashtags : [];
+    const rawHashtags: string[] = Array.isArray(parsed.hashtags) ? parsed.hashtags : [];
 
-        // Format hashtags: ensure they all start with '#'
-        const cleanHashtags = rawHashtags
-          .map(tag => (tag.startsWith('#') ? tag : `#${tag.replace(/\s+/g, '')}`))
-          .filter(tag => tag.length > 1)
-          .slice(0, platformConfig.hashtagMax);
+    const cleanHashtags = rawHashtags
+      .map(tag => (tag.startsWith('#') ? tag : `#${tag.replace(/\s+/g, '')}`))
+      .filter(tag => tag.length > 1)
+      .slice(0, platformConfig.hashtagMax);
 
-        // Strict Post-Validation on character limits
-        const validatedCaptions: CaptionVariation[] = [];
+    const validatedCaptions: CaptionVariation[] = [];
 
-        for (let i = 0; i < rawCaptions.length; i++) {
-          const item = rawCaptions[i];
-          let captionText = item.text || '';
+    for (let i = 0; i < rawCaptions.length; i++) {
+      const item = rawCaptions[i];
+      let captionText = item.text || '';
 
-          // If emoji toggle is OFF, strip any stray emojis just in case
-          if (!includeEmojis) {
-            captionText = captionText.replace(/[\p{Extended_Pictographic}\u{1F300}-\u{1F5FF}\u{1F600}-\u{1F64F}\u{1F680}-\u{1F6FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}]/gu, '').replace(/  +/g, ' ').trim();
-          }
+      if (!includeEmojis) {
+        captionText = captionText
+          .replace(
+            /[\p{Extended_Pictographic}\u{1F300}-\u{1F5FF}\u{1F600}-\u{1F64F}\u{1F680}-\u{1F6FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}]/gu,
+            ''
+          )
+          .replace(/  +/g, ' ')
+          .trim();
+      }
 
-          // Check character limit
-          if (captionText.length > platformConfig.hardLimit) {
-            // Truncate cleanly at word boundary if needed
-            const truncated = captionText.slice(0, platformConfig.hardLimit - 3);
-            const lastSpace = truncated.lastIndexOf(' ');
-            captionText = (lastSpace > 50 ? truncated.slice(0, lastSpace) : truncated) + '...';
-          }
+      if (captionText.length > platformConfig.hardLimit) {
+        const truncated = captionText.slice(0, platformConfig.hardLimit - 3);
+        const lastSpace = truncated.lastIndexOf(' ');
+        captionText = (lastSpace > 50 ? truncated.slice(0, lastSpace) : truncated) + '...';
+      }
 
-          validatedCaptions.push({
-            id: `cap_${i + 1}_${Date.now().toString(36)}`,
-            text: captionText,
-            charCount: captionText.length,
-            hook: item.hook,
-            callToAction: item.callToAction,
-            toneLabel: item.toneLabel || `Option ${i + 1}`,
-          });
-        }
+      validatedCaptions.push({
+        id: `cap_${i + 1}_${Date.now().toString(36)}`,
+        text: captionText,
+        charCount: captionText.length,
+        hook: item.hook,
+        callToAction: item.callToAction,
+        toneLabel: item.toneLabel || `Option ${i + 1}`,
+      });
+    }
 
-        // Fallback if AI produced fewer than 1 caption
-        if (validatedCaptions.length === 0) {
-          validatedCaptions.push({
-            id: `cap_fallback_${Date.now()}`,
-            text: topic,
-            charCount: topic.length,
-            toneLabel: 'Standard',
-          });
-        }
+    if (validatedCaptions.length === 0) {
+      validatedCaptions.push({
+        id: `cap_fallback_${Date.now()}`,
+        text: topic,
+        charCount: topic.length,
+        toneLabel: 'Standard',
+      });
+    }
 
-        return {
-          captions: validatedCaptions,
-          hashtags: cleanHashtags.length > 0 ? cleanHashtags : [`#${platform}`, `#trending`, `#content`],
-        };
+    return {
+      captions: validatedCaptions,
+      hashtags: cleanHashtags.length > 0 ? cleanHashtags : [`#${platform}`, `#trending`, `#content`],
+      isFallback: false,
+    };
+  };
+
+  // Try candidate models in cascade order with backoff retries (up to 3 retries per model)
+  for (const model of MODEL_CASCADE) {
+    const maxRetries = 3;
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        return await executeModelAttempt(model);
       } catch (err: any) {
         lastError = err;
-        console.warn(`[Gemini API] Attempt ${attempt} on model '${model}' failed:`, err?.message || err);
+        console.warn(`[Gemini API] Attempt ${attempt}/${maxRetries} on model '${model}' failed:`, err?.message || err);
 
-        // If 503 high demand or unavailable on attempt 1, immediately switch to next model in cascade for lower latency
-        const is503 = isRetryableError(err);
-        if (is503 && attempt === 1) {
-          console.log(`[Gemini API] Switching to next model in cascade due to high demand on '${model}'...`);
-          break;
-        }
-
-        if (isRetryableError(err) && attempt < maxRetries) {
-          const backoff = attempt * 400 + Math.floor(Math.random() * 200);
+        const isRetryable = isRetryableError(err);
+        if (isRetryable && attempt < maxRetries) {
+          const backoff = attempt * 600 + Math.floor(Math.random() * 300);
           await sleep(backoff);
           continue;
         }
 
-        // Move to next candidate model
+        // If error isn't retryable or exceeded attempts on this model, try next model in cascade
         break;
       }
     }
   }
 
-  console.warn('All Gemini API models in cascade failed. Utilizing intelligent copy synthesis engine fallback:', lastError?.message || lastError);
-  try {
-    const fallbackResult = generateSynthesizedCaptions(params);
-    return fallbackResult;
-  } catch (synthErr) {
-    const isHighDemand = isRetryableError(lastError);
-    const userMessage = isHighDemand
-      ? 'The AI model is experiencing momentary high demand. Please click Regenerate to retry.'
-      : (lastError?.message || 'Failed to generate captions. Please try again.');
-
-    throw new Error(userMessage);
+  // Before falling back to synthesis, if only ~2.5s spent across all attempts, do one final quick retry on stable model
+  const elapsed = Date.now() - startTime;
+  if (elapsed < 2500) {
+    try {
+      console.log('[Gemini API] Executing fast 1.5s recovery retry on stable model before fallback...');
+      await sleep(1500);
+      return await executeModelAttempt('gemini-2.5-flash');
+    } catch (finalRetryErr: any) {
+      lastError = finalRetryErr;
+      console.warn('[Gemini API] Final quick recovery attempt failed:', finalRetryErr?.message || finalRetryErr);
+    }
   }
+
+  console.warn(
+    'All Gemini API models in cascade failed. Utilizing starter template synthesis fallback:',
+    lastError?.message || lastError
+  );
+
+  const fallbackReason: 'high_demand' | 'api_error' | 'no_key' = isRetryableError(lastError)
+    ? 'high_demand'
+    : 'api_error';
+
+  const fallbackResult = generateSynthesizedCaptions(params);
+  return {
+    ...fallbackResult,
+    isFallback: true,
+    fallbackReason,
+  };
 }

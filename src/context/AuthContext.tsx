@@ -8,13 +8,19 @@ interface AuthContextType {
   loading: boolean;
   isGuest: boolean;
   announcement: SystemAnnouncement | null;
+  announcements: SystemAnnouncement[];
+  unreadAnnouncementsCount: number;
+  markAnnouncementsAsRead: () => void;
+  isAnnouncementsOpen: boolean;
+  openAnnouncements: () => void;
+  closeAnnouncements: () => void;
   dismissAnnouncement: () => void;
   login: (email: string, password: string) => Promise<void>;
   register: (email: string, password: string, name?: string) => Promise<void>;
   logout: () => void;
   updateUsage: (newUsage: DailyUsage) => void;
   refreshUsage: () => Promise<void>;
-  requestUpgrade: (plan: 'pro' | 'premium', transferReference: string, senderName?: string, notes?: string) => Promise<UpgradeRequest>;
+  requestUpgrade: (plan: 'pro' | 'premium', transferReference: string, senderName: string, notes?: string) => Promise<UpgradeRequest>;
   isAuthModalOpen: boolean;
   openAuthModal: (mode?: 'login' | 'register', reason?: string) => void;
   closeAuthModal: () => void;
@@ -52,16 +58,23 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [usage, setUsage] = useState<DailyUsage | null>(null);
   const [loading, setLoading] = useState(true);
   const [announcement, setAnnouncement] = useState<SystemAnnouncement | null>(null);
+  const [announcements, setAnnouncements] = useState<SystemAnnouncement[]>([]);
+  const [isAnnouncementsOpen, setIsAnnouncementsOpen] = useState(false);
+  const [unreadAnnouncementsCount, setUnreadAnnouncementsCount] = useState(0);
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const [authModalMode, setAuthModalMode] = useState<'login' | 'register'>('login');
   const [authModalReason, setAuthModalReason] = useState<string | null>(null);
   const [isUpgradeModalOpen, setIsUpgradeModalOpen] = useState(false);
 
-  const fetchAnnouncement = async () => {
+  const fetchAnnouncements = async () => {
     try {
-      const res = await fetch('/api/announcement');
-      if (res.ok) {
-        const data = await parseJsonResponse(res, 'Failed to fetch announcement');
+      const [singleRes, allRes] = await Promise.all([
+        fetch('/api/announcement'),
+        fetch('/api/announcements'),
+      ]);
+
+      if (singleRes.ok) {
+        const data = await parseJsonResponse(singleRes, 'Failed to fetch announcement');
         if (data?.announcement) {
           const dismissedId = localStorage.getItem('dismissed_announcement_id');
           if (dismissedId !== data.announcement.id) {
@@ -69,9 +82,36 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           }
         }
       }
+
+      if (allRes.ok) {
+        const allData = await parseJsonResponse(allRes, 'Failed to fetch announcements list');
+        const list = allData?.announcements || [];
+        setAnnouncements(list);
+
+        const lastReadTimestamp = localStorage.getItem('last_read_announcements_time') || '0';
+        const unread = list.filter((a: SystemAnnouncement) => {
+          const itemTime = new Date(a.createdAt || a.updatedAt).getTime();
+          return itemTime > parseInt(lastReadTimestamp, 10);
+        }).length;
+        setUnreadAnnouncementsCount(unread);
+      }
     } catch {
       // Non-critical
     }
+  };
+
+  const markAnnouncementsAsRead = () => {
+    localStorage.setItem('last_read_announcements_time', Date.now().toString());
+    setUnreadAnnouncementsCount(0);
+  };
+
+  const openAnnouncements = () => {
+    markAnnouncementsAsRead();
+    setIsAnnouncementsOpen(true);
+  };
+
+  const closeAnnouncements = () => {
+    setIsAnnouncementsOpen(false);
   };
 
   const fetchCurrentUser = async (authToken: string) => {
@@ -114,7 +154,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   useEffect(() => {
-    fetchAnnouncement();
+    fetchAnnouncements();
     if (token) {
       fetchCurrentUser(token);
     } else {
@@ -192,7 +232,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const requestUpgrade = async (
     plan: 'pro' | 'premium',
     transferReference: string,
-    senderName?: string,
+    senderName: string,
     notes?: string
   ): Promise<UpgradeRequest> => {
     if (!token || !user) {
@@ -255,6 +295,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         loading,
         isGuest: !user,
         announcement,
+        announcements,
+        unreadAnnouncementsCount,
+        markAnnouncementsAsRead,
+        isAnnouncementsOpen,
+        openAnnouncements,
+        closeAnnouncements,
         dismissAnnouncement,
         login,
         register,

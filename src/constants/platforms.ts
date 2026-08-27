@@ -81,5 +81,35 @@ export const PLATFORMS: Record<PlatformId, PlatformConfig> = {
 export const PLAN_LIMITS = {
   free: 10,
   pro: 50,
-  premium: -1, // -1 represents unlimited
+  premium: -1, // -1 represents unlimited in user UI
+} as const;
+
+export const PREMIUM_FAIR_USE_SOFT_CAP = 150; // Server-side silent fair-use safeguard
+
+export const DEFAULT_BANK_DETAILS = {
+  accountNumber: '3040505559',
+  bankName: 'First Bank',
+  accountName: 'Christabel Clement',
+  instructions: 'Please include your Account Email and requested Plan in the transfer description or reference note.',
+} as const;
+
+export const PLAN_PRICING = {
+  free: {
+    priceNaira: '₦0',
+    amount: 0,
+    period: 'forever',
+    dailyLimitText: '10 generations/day',
+  },
+  pro: {
+    priceNaira: '₦3,500',
+    amount: 3500,
+    period: '/ month',
+    dailyLimitText: '50 generations/day',
+  },
+  premium: {
+    priceNaira: '₦9,000',
+    amount: 9000,
+    period: '/ month',
+    dailyLimitText: 'Unlimited generations',
+  },
 } as const;

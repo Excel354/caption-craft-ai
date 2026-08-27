@@ -1,15 +1,16 @@
 import React, { useState } from 'react';
-import { Zap, Crown, User as UserIcon, LogOut, History, ChevronDown, CheckCircle2, Clock, Sparkles, LogIn } from 'lucide-react';
+import { Zap, Crown, User as UserIcon, LogOut, History, ChevronDown, CheckCircle2, Clock, Sparkles, LogIn, Bell, HelpCircle } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { AppLogo } from './AppLogo';
 
 interface HeaderProps {
   onOpenHistory: () => void;
   onOpenUpgrade: () => void;
+  onOpenOnboarding?: () => void;
 }
 
-export const Header: React.FC<HeaderProps> = ({ onOpenHistory, onOpenUpgrade }) => {
-  const { user, isGuest, usage, logout, openAuthModal } = useAuth();
+export const Header: React.FC<HeaderProps> = ({ onOpenHistory, onOpenUpgrade, onOpenOnboarding }) => {
+  const { user, isGuest, usage, logout, openAuthModal, openAnnouncements, unreadAnnouncementsCount } = useAuth();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
 
   const plan = user?.plan || 'free';
@@ -22,8 +23,8 @@ export const Header: React.FC<HeaderProps> = ({ onOpenHistory, onOpenUpgrade }) 
   const getPlanBadge = () => {
     if (isPendingUpgrade) {
       return (
-        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-mono font-bold uppercase tracking-wider bg-yellow-500/10 text-yellow-600 dark:text-yellow-400 border border-yellow-500/30">
-          <Clock className="w-3 h-3 text-[#FACC15] animate-spin" />
+        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-mono font-bold uppercase tracking-wider bg-amber-500/15 text-amber-700 dark:text-amber-300 border border-amber-500/30">
+          <Clock className="w-3 h-3 text-amber-500 animate-spin" />
           UPGRADE PENDING
         </span>
       );
@@ -33,14 +34,14 @@ export const Header: React.FC<HeaderProps> = ({ onOpenHistory, onOpenUpgrade }) 
       case 'premium':
         return (
           <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold uppercase tracking-wider bg-amber-500/15 text-amber-700 dark:text-amber-300 border border-amber-500/30">
-            <Crown className="w-3 h-3 text-[#FACC15]" />
+            <Crown className="w-3 h-3 text-amber-500" />
             PREMIUM
           </span>
         );
       case 'pro':
         return (
-          <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold uppercase tracking-wider bg-[#7C3AED]/15 text-[#7C3AED] dark:text-[#A78BFA] border border-[#7C3AED]/30">
-            <Zap className="w-3 h-3 text-[#7C3AED]" />
+          <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold uppercase tracking-wider bg-violet-100 text-violet-700 dark:bg-violet-950/60 dark:text-violet-300 border border-violet-300 dark:border-violet-800">
+            <Zap className="w-3 h-3 text-violet-600 dark:text-violet-400" />
             PRO
           </span>
         );
@@ -56,7 +57,7 @@ export const Header: React.FC<HeaderProps> = ({ onOpenHistory, onOpenUpgrade }) 
   const percentUsed = limit === -1 ? 0 : Math.min(100, Math.round((count / limit) * 100));
 
   return (
-    <header className="sticky top-0 z-30 w-full border-b border-slate-200 dark:border-slate-800 bg-white/95 dark:bg-[#172554]/95 backdrop-blur-md shrink-0 transition-colors">
+    <header id="app-header" className="sticky top-0 z-30 w-full border-b border-slate-200 dark:border-slate-800 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md shrink-0 transition-colors">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between gap-4">
         {/* Brand with Uploaded Logo */}
         <div className="flex items-center gap-3">
@@ -68,7 +69,7 @@ export const Header: React.FC<HeaderProps> = ({ onOpenHistory, onOpenUpgrade }) 
         </div>
 
         {/* Right side controls */}
-        <div className="flex items-center gap-2.5 sm:gap-4">
+        <div className="flex items-center gap-2 sm:gap-3">
           {/* Daily Quota pill */}
           <div className="hidden sm:flex flex-col items-end text-xs font-mono">
             <div className="flex items-center gap-1.5 font-medium text-slate-700 dark:text-slate-300 text-[11px]">
@@ -78,7 +79,7 @@ export const Header: React.FC<HeaderProps> = ({ onOpenHistory, onOpenUpgrade }) 
                 </span>
               ) : (
                 <>
-                  <span className="text-[#172554] dark:text-white font-bold">{remaining}</span> of{' '}
+                  <span className="text-slate-900 dark:text-white font-bold">{remaining}</span> of{' '}
                   <span className="text-slate-400">{limit}</span> LEFT TODAY
                 </>
               )}
@@ -90,8 +91,8 @@ export const Header: React.FC<HeaderProps> = ({ onOpenHistory, onOpenUpgrade }) 
                     percentUsed >= 90
                       ? 'bg-rose-500'
                       : percentUsed >= 70
-                      ? 'bg-[#FACC15]'
-                      : 'bg-[#7C3AED]'
+                      ? 'bg-amber-500'
+                      : 'bg-violet-600'
                   }`}
                   style={{ width: `${percentUsed}%` }}
                 />
@@ -102,42 +103,73 @@ export const Header: React.FC<HeaderProps> = ({ onOpenHistory, onOpenUpgrade }) 
           {/* Plan badge */}
           <div className="hidden lg:block">{getPlanBadge()}</div>
 
-          {/* Upgrade CTA (Electric Purple & Bright Yellow) */}
+          {/* Upgrade CTA */}
           {plan !== 'premium' && (
             <button
               id="header-upgrade-btn"
               onClick={onOpenUpgrade}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold font-mono uppercase tracking-wider text-white bg-[#7C3AED] hover:bg-[#6D28D9] rounded-xl shadow-md shadow-purple-600/25 border border-purple-500/30 transition active:scale-95 cursor-pointer"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold font-mono uppercase tracking-wider text-white bg-violet-600 hover:bg-violet-700 rounded-xl shadow-md shadow-violet-600/25 border border-violet-500/30 transition active:scale-95 cursor-pointer"
             >
-              <Crown className="w-3.5 h-3.5 text-[#FACC15]" />
+              <Crown className="w-3.5 h-3.5 text-amber-400" />
               <span>{isPendingUpgrade ? 'Upgrade Info' : 'Go Pro'}</span>
             </button>
           )}
+
+          {/* Bell Icon / Announcements Drawer */}
+          <button
+            id="header-announcements-btn"
+            onClick={openAnnouncements}
+            className="relative p-2 text-slate-600 dark:text-slate-300 hover:text-violet-600 dark:hover:text-violet-400 hover:bg-violet-50 dark:hover:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 transition cursor-pointer"
+            title="Announcements & Inbox"
+            aria-label="Announcements"
+          >
+            <Bell className="w-4 h-4" />
+            {unreadAnnouncementsCount > 0 && (
+              <span className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-violet-600 text-[10px] font-bold text-white font-mono shadow-xs animate-bounce">
+                {unreadAnnouncementsCount}
+              </span>
+            )}
+          </button>
 
           {/* History drawer button */}
           <button
             id="header-history-btn"
             onClick={onOpenHistory}
-            className="p-2 text-slate-600 dark:text-slate-300 hover:text-[#7C3AED] hover:bg-[#EDE9FE]/50 dark:hover:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 transition cursor-pointer"
+            className="p-2 text-slate-600 dark:text-slate-300 hover:text-violet-600 dark:hover:text-violet-400 hover:bg-violet-50 dark:hover:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 transition cursor-pointer"
             title="Saved Captions & History"
             aria-label="History"
           >
             <History className="w-4 h-4" />
           </button>
 
+          {/* Onboarding Guide Tip Button */}
+          {onOpenOnboarding && (
+            <button
+              id="header-onboarding-btn"
+              onClick={onOpenOnboarding}
+              className="p-2 text-slate-600 dark:text-slate-300 hover:text-violet-600 dark:hover:text-violet-400 hover:bg-violet-50 dark:hover:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 transition cursor-pointer hidden sm:flex items-center justify-center"
+              title="Why Captions Matter Guide"
+              aria-label="Creator Guide"
+            >
+              <HelpCircle className="w-4 h-4" />
+            </button>
+          )}
+
           {/* User Account / Guest Sign In */}
           {isGuest ? (
             <div className="flex items-center gap-2">
               <button
+                id="header-login-btn"
                 onClick={() => openAuthModal('login')}
-                className="px-3 py-1.5 text-xs font-semibold text-slate-700 dark:text-slate-200 hover:text-[#7C3AED] bg-slate-100 hover:bg-[#EDE9FE] dark:bg-slate-800 dark:hover:bg-slate-700 rounded-xl border border-slate-200 dark:border-slate-700 transition cursor-pointer flex items-center gap-1.5"
+                className="px-3 py-1.5 text-xs font-semibold text-slate-700 dark:text-slate-200 hover:text-violet-600 bg-slate-100 hover:bg-violet-50 dark:bg-slate-800 dark:hover:bg-slate-700 rounded-xl border border-slate-200 dark:border-slate-700 transition cursor-pointer flex items-center gap-1.5"
               >
                 <LogIn className="w-3.5 h-3.5" />
                 <span>Log In</span>
               </button>
               <button
+                id="header-signup-btn"
                 onClick={() => openAuthModal('register')}
-                className="hidden sm:inline-flex px-3 py-1.5 text-xs font-bold text-white bg-[#2563EB] hover:bg-blue-700 rounded-xl shadow-sm transition cursor-pointer"
+                className="hidden sm:inline-flex px-3 py-1.5 text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-xl shadow-sm transition cursor-pointer"
               >
                 Sign Up
               </button>
@@ -147,9 +179,9 @@ export const Header: React.FC<HeaderProps> = ({ onOpenHistory, onOpenUpgrade }) 
               <button
                 id="header-user-menu-btn"
                 onClick={() => setIsMenuOpen(!isMenuOpen)}
-                className="flex items-center gap-2 pl-2 pr-2.5 py-1.5 text-xs font-medium text-slate-700 dark:text-slate-200 bg-slate-50 hover:bg-[#EDE9FE]/40 dark:bg-slate-800 dark:hover:bg-slate-700 rounded-xl border border-slate-200 dark:border-slate-700 transition cursor-pointer"
+                className="flex items-center gap-2 pl-2 pr-2.5 py-1.5 text-xs font-medium text-slate-700 dark:text-slate-200 bg-slate-50 hover:bg-violet-50 dark:bg-slate-800 dark:hover:bg-slate-700 rounded-xl border border-slate-200 dark:border-slate-700 transition cursor-pointer"
               >
-                <div className="w-6 h-6 rounded-lg bg-[#7C3AED] text-white flex items-center justify-center text-[10px] font-mono font-bold shadow-xs">
+                <div className="w-6 h-6 rounded-lg bg-violet-600 text-white flex items-center justify-center text-[10px] font-mono font-bold shadow-xs">
                   {user?.name ? user.name[0].toUpperCase() : 'U'}
                 </div>
                 <span className="max-w-[90px] truncate hidden sm:inline-block font-medium text-xs">
@@ -172,7 +204,7 @@ export const Header: React.FC<HeaderProps> = ({ onOpenHistory, onOpenUpgrade }) 
                   <div className="px-3.5 py-2 border-b border-slate-100 dark:border-slate-800 text-[11px] text-slate-600 dark:text-slate-400 font-mono">
                     <div className="flex justify-between items-center mb-1">
                       <span>TODAY'S USAGE:</span>
-                      <span className="font-bold text-[#172554] dark:text-white">
+                      <span className="font-bold text-slate-900 dark:text-white">
                         {limit === -1 ? 'UNLIMITED' : `${count} / ${limit}`}
                       </span>
                     </div>
@@ -180,28 +212,45 @@ export const Header: React.FC<HeaderProps> = ({ onOpenHistory, onOpenUpgrade }) 
                   </div>
 
                   <button
+                    id="user-menu-upgrade-btn"
                     onClick={() => {
                       setIsMenuOpen(false);
                       onOpenUpgrade();
                     }}
-                    className="w-full text-left px-3.5 py-2 text-xs text-slate-700 dark:text-slate-300 hover:bg-[#EDE9FE] dark:hover:bg-slate-800 flex items-center gap-2 cursor-pointer font-medium"
+                    className="w-full text-left px-3.5 py-2 text-xs text-slate-700 dark:text-slate-300 hover:bg-violet-50 dark:hover:bg-slate-800 flex items-center gap-2 cursor-pointer font-medium"
                   >
-                    <Sparkles className="w-3.5 h-3.5 text-[#7C3AED]" />
+                    <Sparkles className="w-3.5 h-3.5 text-violet-600" />
                     {isPendingUpgrade ? 'View Upgrade Status' : 'Upgrade to Pro / Premium'}
                   </button>
 
                   <button
+                    id="user-menu-history-btn"
                     onClick={() => {
                       setIsMenuOpen(false);
                       onOpenHistory();
                     }}
-                    className="w-full text-left px-3.5 py-2 text-xs text-slate-700 dark:text-slate-300 hover:bg-[#EDE9FE] dark:hover:bg-slate-800 flex items-center gap-2 cursor-pointer"
+                    className="w-full text-left px-3.5 py-2 text-xs text-slate-700 dark:text-slate-300 hover:bg-violet-50 dark:hover:bg-slate-800 flex items-center gap-2 cursor-pointer"
                   >
-                    <History className="w-3.5 h-3.5 text-[#2563EB]" />
+                    <History className="w-3.5 h-3.5 text-blue-600" />
                     My Saved Captions
                   </button>
 
+                  {onOpenOnboarding && (
+                    <button
+                      id="user-menu-onboarding-btn"
+                      onClick={() => {
+                        setIsMenuOpen(false);
+                        onOpenOnboarding();
+                      }}
+                      className="w-full text-left px-3.5 py-2 text-xs text-slate-700 dark:text-slate-300 hover:bg-violet-50 dark:hover:bg-slate-800 flex items-center gap-2 cursor-pointer"
+                    >
+                      <HelpCircle className="w-3.5 h-3.5 text-amber-500" />
+                      Why Captions Matter Guide
+                    </button>
+                  )}
+
                   <button
+                    id="user-menu-signout-btn"
                     onClick={() => {
                       setIsMenuOpen(false);
                       logout();

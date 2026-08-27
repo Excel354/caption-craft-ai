@@ -10,6 +10,7 @@ interface CaptionCardProps {
   platform: PlatformId;
   onPreview: (caption: string) => void;
   hashtags?: string[];
+  isFallback?: boolean;
 }
 
 export const CaptionCard: React.FC<CaptionCardProps> = ({
@@ -18,6 +19,7 @@ export const CaptionCard: React.FC<CaptionCardProps> = ({
   platform,
   onPreview,
   hashtags = [],
+  isFallback = false,
 }) => {
   const [copied, setCopied] = useState(false);
   const [copiedWithTags, setCopiedWithTags] = useState(false);
@@ -87,18 +89,27 @@ export const CaptionCard: React.FC<CaptionCardProps> = ({
   return (
     <div
       id={`caption-card-${index}`}
-      className="group relative bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-5 shadow-md hover:shadow-lg transition-all flex flex-col justify-between"
+      className={`group relative bg-white dark:bg-slate-900 rounded-2xl border p-5 shadow-md hover:shadow-lg transition-all flex flex-col justify-between ${
+        isFallback
+          ? 'border-amber-300 dark:border-amber-700/60 ring-1 ring-amber-400/20'
+          : 'border-slate-200 dark:border-slate-800'
+      }`}
     >
       {/* Card Header: Angle tag & Char count */}
       <div>
         <div className="flex items-center justify-between gap-2 pb-3 mb-3 border-b border-slate-100 dark:border-slate-800">
-          <div className="flex items-center gap-2">
-            <span className="text-indigo-600 dark:text-indigo-400 font-mono font-bold text-xs">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className={`font-mono font-bold text-xs ${isFallback ? 'text-amber-600 dark:text-amber-400' : 'text-indigo-600 dark:text-indigo-400'}`}>
               0{index + 1}.
             </span>
             <span className="text-xs font-bold text-slate-900 dark:text-slate-100 uppercase tracking-wide font-sans">
               {variation.toneLabel || `Variation 0${index + 1}`}
             </span>
+            {isFallback && (
+              <span className="px-1.5 py-0.5 rounded text-[9px] font-mono font-bold uppercase tracking-wider bg-amber-500/15 text-amber-700 dark:text-amber-300 border border-amber-300 dark:border-amber-700/50">
+                Template
+              </span>
+            )}
           </div>
 
           <div className="flex items-center gap-2">

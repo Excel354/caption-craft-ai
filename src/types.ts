@@ -25,7 +25,7 @@ export interface UpgradeRequest {
   userName: string;
   plan: 'pro' | 'premium';
   transferReference: string;
-  senderName?: string;
+  senderName: string;
   notes?: string;
   requestedAt: string;
   status: 'pending' | 'approved' | 'rejected';
@@ -39,6 +39,8 @@ export interface User {
   name: string;
   plan: PlanTier;
   createdAt: string;
+  isSuspended?: boolean;
+  suspendedAt?: string;
   pendingUpgrade?: UpgradeRequest | null;
 }
 
@@ -48,6 +50,10 @@ export interface DailyUsage {
   count: number;
   limit: number; // 10, 50, or -1 (unlimited)
   remaining: number;
+  realGeminiCalls?: number;
+  cachedCalls?: number;
+  fallbackCalls?: number;
+  repeatedNudgeCount?: number;
 }
 
 export interface CaptionVariation {
@@ -72,6 +78,9 @@ export interface GenerationResponse {
   captions: CaptionVariation[];
   hashtags: string[];
   platform: PlatformId;
+  isFallback?: boolean;
+  fallbackReason?: 'high_demand' | 'api_error' | 'no_key';
+  isCached?: boolean;
   usage: {
     usedToday: number;
     limit: number;
@@ -81,6 +90,8 @@ export interface GenerationResponse {
   };
   error?: string;
   quotaExceeded?: boolean;
+  isGuest?: boolean;
+  isSuspended?: boolean;
 }
 
 export interface SavedItem {
@@ -99,6 +110,7 @@ export interface SystemAnnouncement {
   message: string;
   active: boolean;
   type: 'info' | 'warning' | 'promo';
+  createdAt?: string;
   updatedAt: string;
 }
 
@@ -106,8 +118,8 @@ export interface BankConfig {
   bankName: string;
   accountName: string;
   accountNumber: string;
-  routingOrIban: string;
-  swiftCode: string;
+  routingOrIban?: string;
+  swiftCode?: string;
   instructions: string;
 }
 
@@ -119,6 +131,25 @@ export interface AdminStats {
     premium: number;
   };
   totalGenerationsToday: number;
+  totalRealGeminiCallsToday: number;
+  totalCachedCallsToday: number;
+  totalFallbackCallsToday: number;
   pendingUpgradesCount: number;
+  suspendedUsersCount: number;
+}
+
+export interface AdminUserItem {
+  id: string;
+  email: string;
+  name: string;
+  plan: PlanTier;
+  createdAt: string;
+  usedToday: number;
+  realCallsToday: number;
+  cachedCallsToday: number;
+  repeatedNudgeCount: number;
+  isSuspended: boolean;
+  suspendedAt?: string;
+  pendingUpgrade?: UpgradeRequest | null;
 }
 
