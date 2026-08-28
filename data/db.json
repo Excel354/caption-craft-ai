@@ -1,0 +1,82 @@
+{
+  "users": {
+    "usr_44942a11": {
+      "id": "usr_44942a11",
+      "email": "creator@example.com",
+      "name": "Demo Creator",
+      "plan": "free",
+      "passwordHash": "cae34fda85f22b91ddf8b23815d80d8374a9ca4d7cdfe0c853c51832838647a0a1eab01e1747207f5a1a607065f6503bf39a5a603b4640498c19231ca547754b",
+      "passwordSalt": "d6e72801f3b2ec4752f5f48f06675a1b",
+      "createdAt": "2026-08-28T10:14:46.289Z",
+      "isSuspended": false
+    },
+    "usr_e808a157": {
+      "id": "usr_e808a157",
+      "email": "coolexcellence354@gmail.com",
+      "name": "Clement Imoh Excellence",
+      "plan": "free",
+      "passwordHash": "f254f3da1cd98d5bef5f0e3b789701316539cd4d682d53f7d74aa8fb7d9d2d13366bf8d7702f63cdad5fb825fef81b14afe3f8b4904fee4bf9e301e1124212e6",
+      "passwordSalt": "5d8665e6d6f171baf0853fad89aaa405",
+      "createdAt": "2026-08-28T10:29:36.085Z",
+      "isSuspended": false,
+      "lastReadAnnouncementTime": 1787913161341
+    }
+  },
+  "sessions": {
+    "e57bcd50b0a69d9899672a41d1147110eba5406aae293db3b75597950ecc9647": {
+      "token": "e57bcd50b0a69d9899672a41d1147110eba5406aae293db3b75597950ecc9647",
+      "userId": "usr_e808a157",
+      "createdAt": 1787912976085
+    }
+  },
+  "dailyUsage": {
+    "usr_e808a157:2026-08-28": 1,
+    "gst_3132372e302e:2026-08-28": 1
+  },
+  "dailyUsageDetails": {
+    "usr_e808a157:2026-08-28": {
+      "count": 1,
+      "realGeminiCalls": 0,
+      "cachedCalls": 0,
+      "fallbackCalls": 6,
+      "repeatedNudgeCount": 0
+    },
+    "gst_3132372e302e:2026-08-28": {
+      "count": 1,
+      "realGeminiCalls": 1,
+      "cachedCalls": 0,
+      "fallbackCalls": 1,
+      "repeatedNudgeCount": 0
+    }
+  },
+  "userHistory": {},
+  "upgradeRequests": {},
+  "announcement": {
+    "id": "ann_initial",
+    "message": "🚀 Welcome to Caption Generator Pro! Manual bank transfer upgrades are reviewed promptly by our administration team.",
+    "active": true,
+    "type": "promo",
+    "createdAt": "2026-08-28T10:14:46.287Z",
+    "updatedAt": "2026-08-28T10:14:46.287Z"
+  },
+  "announcementsList": [
+    {
+      "id": "ann_initial",
+      "message": "🚀 Welcome to Caption Generator Pro! Manual bank transfer upgrades are reviewed promptly by our administration team.",
+      "active": true,
+      "type": "promo",
+      "createdAt": "2026-08-28T10:14:46.287Z",
+      "updatedAt": "2026-08-28T10:14:46.287Z"
+    }
+  ],
+  "bankConfig": {
+    "bankName": "First Bank",
+    "accountName": "Christabel Clement",
+    "accountNumber": "3040505559",
+    "instructions": "Please include your Account Email and requested Plan in the transfer description or reference note."
+  },
+  "adminSessions": {
+    "adm_8edaffcd8f78218c153283ee91b486cc7363d074a69ed45adefc76b7d22c9785": 1787912852290,
+    "adm_06ef41e83dda7e365d39a8caca9e8597947a6b2b4b4fe2eb243114551d58720c": 1787913039428
+  }
+}

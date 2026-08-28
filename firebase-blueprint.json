@@ -1,0 +1,178 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "User profile storing personal preferences, current plan tier, and onboarding status.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique Firebase Authentication UID.",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "email": {
+          "type": "string",
+          "description": "User email address.",
+          "maxLength": 256
+        },
+        "name": {
+          "type": "string",
+          "description": "User display name.",
+          "maxLength": 128
+        },
+        "plan": {
+          "type": "string",
+          "description": "Current subscription plan tier.",
+          "enum": ["free", "pro", "premium"]
+        },
+        "createdAt": {
+          "type": "string",
+          "description": "Account creation ISO timestamp.",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "description": "Last profile update ISO timestamp.",
+          "format": "date-time"
+        },
+        "hasSeenOnboarding": {
+          "type": "boolean",
+          "description": "Flag indicating if the user has completed or dismissed the onboarding walkthrough."
+        },
+        "lastReadAnnouncementTime": {
+          "type": "number",
+          "description": "Timestamp in milliseconds when the user last viewed system announcements."
+        },
+        "dismissedAnnouncementId": {
+          "type": "string",
+          "description": "Identifier of the banner announcement explicitly dismissed by the user.",
+          "maxLength": 128
+        }
+      },
+      "required": ["id", "email", "plan"]
+    },
+    "SavedCaption": {
+      "title": "SavedCaption",
+      "description": "A generated caption with hashtags and platform metadata saved to user history.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique document ID.",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "userId": {
+          "type": "string",
+          "description": "Firebase UID of the creator who generated this caption.",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "topic": {
+          "type": "string",
+          "description": "User prompt or subject of the caption.",
+          "maxLength": 500
+        },
+        "platform": {
+          "type": "string",
+          "description": "Social media platform target.",
+          "enum": ["instagram", "tiktok", "x", "facebook", "linkedin"]
+        },
+        "caption": {
+          "type": "string",
+          "description": "Generated caption text body.",
+          "maxLength": 10000
+        },
+        "hashtags": {
+          "type": "array",
+          "description": "List of recommended hashtag tags."
+        },
+        "createdAt": {
+          "type": "string",
+          "description": "Creation ISO timestamp.",
+          "format": "date-time"
+        },
+        "isFavorite": {
+          "type": "boolean",
+          "description": "Whether this item is pinned to favorites."
+        }
+      },
+      "required": ["id", "userId", "topic", "platform", "caption", "hashtags", "createdAt"]
+    },
+    "UpgradeRequest": {
+      "title": "UpgradeRequest",
+      "description": "Manual bank transfer proof submitted by user to request tier upgrade.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique upgrade request ID.",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "userId": {
+          "type": "string",
+          "description": "Firebase UID of user requesting tier change.",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "userEmail": {
+          "type": "string",
+          "description": "Email address of user requesting upgrade.",
+          "maxLength": 256
+        },
+        "userName": {
+          "type": "string",
+          "description": "Name of user requesting upgrade.",
+          "maxLength": 128
+        },
+        "plan": {
+          "type": "string",
+          "description": "Requested plan tier.",
+          "enum": ["pro", "premium"]
+        },
+        "transferReference": {
+          "type": "string",
+          "description": "Bank transfer payment reference or transaction ID.",
+          "maxLength": 128
+        },
+        "senderName": {
+          "type": "string",
+          "description": "Name on sending bank account.",
+          "maxLength": 128
+        },
+        "notes": {
+          "type": "string",
+          "description": "Optional notes or comments from user.",
+          "maxLength": 1000
+        },
+        "status": {
+          "type": "string",
+          "description": "Approval status of the request.",
+          "enum": ["pending", "approved", "rejected"]
+        },
+        "requestedAt": {
+          "type": "string",
+          "description": "Submission ISO timestamp.",
+          "format": "date-time"
+        }
+      },
+      "required": ["id", "userId", "plan", "transferReference", "senderName", "status", "requestedAt"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "UserProfile",
+      "description": "User profile collection partitioned by Firebase Auth UID."
+    },
+    "/users/{userId}/savedCaptions/{captionId}": {
+      "schema": "SavedCaption",
+      "description": "User's saved caption history and favorites subcollection."
+    },
+    "/users/{userId}/upgradeRequests/{requestId}": {
+      "schema": "UpgradeRequest",
+      "description": "User's submitted upgrade verification requests."
+    }
+  }
+}

@@ -24,7 +24,7 @@ import { PlatformId, CaptionVariation } from './types';
 import { PLATFORMS } from './constants/platforms';
 
 function MainGenerator({ onOpenAdmin }: { onOpenAdmin: () => void }) {
-  const { token, usage, updateUsage, openUpgradeModal } = useAuth();
+  const { token, user, usage, updateUsage, openUpgradeModal, saveCaption } = useAuth();
 
   const [topic, setTopic] = useState('');
   const [platform, setPlatform] = useState<PlatformId>('instagram');
@@ -55,6 +55,12 @@ function MainGenerator({ onOpenAdmin }: { onOpenAdmin: () => void }) {
   const [isOnboardingOpen, setIsOnboardingOpen] = useState(() => {
     return !localStorage.getItem('hide_caption_onboarding');
   });
+
+  useEffect(() => {
+    if (user?.hasSeenOnboarding) {
+      setIsOnboardingOpen(false);
+    }
+  }, [user?.hasSeenOnboarding]);
 
   // Background auto-retry refs
   const bgRetryTimerRef = useRef<NodeJS.Timeout | null>(null);
@@ -266,6 +272,19 @@ function MainGenerator({ onOpenAdmin }: { onOpenAdmin: () => void }) {
       setCaptions(data.captions || []);
       setHashtags(data.hashtags || []);
 
+      if (user?.id && data.captions && data.captions.length > 0) {
+        saveCaption({
+          id: 'cap_' + Date.now() + '_' + Math.random().toString(36).substring(2, 7),
+          platform,
+          topic: topic.trim(),
+          caption: data.captions[0].text,
+          hashtags: data.hashtags || [],
+          tone: tone || undefined,
+          createdAt: new Date().toISOString(),
+          isFavorite: false,
+        }).catch(() => {});
+      }
+
       if (data.usage) {
         updateUsage(data.usage);
       }
@@ -321,6 +340,7 @@ function MainGenerator({ onOpenAdmin }: { onOpenAdmin: () => void }) {
         onOpenHistory={() => setIsHistoryOpen(true)}
         onOpenUpgrade={openUpgradeModal}
         onOpenOnboarding={() => setIsOnboardingOpen(true)}
+        onOpenAdmin={onOpenAdmin}
       />
 
       <main className="flex-1 max-w-5xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8 space-y-6">
@@ -502,6 +522,7 @@ function MainGenerator({ onOpenAdmin }: { onOpenAdmin: () => void }) {
                   onPreview={text => setPreviewCaption(text)}
                   hashtags={hashtags}
                   isFallback={isFallback}
+                  topic={topic}
                 />
               ))}
             </div>
@@ -517,14 +538,7 @@ function MainGenerator({ onOpenAdmin }: { onOpenAdmin: () => void }) {
         <div className="max-w-5xl mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-2 font-mono text-[11px]">
           <p>© {new Date().getFullYear()} CAPTION_MATRIX // PLATFORM-AWARE AI ENGINE</p>
           <div className="flex items-center gap-4">
-            <span className="hidden sm:inline">IG • TIKTOK • X • FB • LI</span>
-            <button
-              id="footer-admin-link"
-              onClick={onOpenAdmin}
-              className="text-slate-400 hover:text-violet-600 dark:hover:text-violet-400 transition cursor-pointer"
-            >
-              Admin Portal
-            </button>
+            <span>IG • TIKTOK • X • FB • LI</span>
           </div>
         </div>
       </footer>
@@ -554,25 +568,13 @@ function MainGenerator({ onOpenAdmin }: { onOpenAdmin: () => void }) {
 }
 
 export default function App() {
-  const [isAdminView, setIsAdminView] = useState(() => {
-    return window.location.hash === '#admin' || window.location.pathname === '/admin';
-  });
-
-  useEffect(() => {
-    const handleHashChange = () => {
-      setIsAdminView(window.location.hash === '#admin');
-    };
-    window.addEventListener('hashchange', handleHashChange);
-    return () => window.removeEventListener('hashchange', handleHashChange);
-  }, []);
+  const [isAdminView, setIsAdminView] = useState(false);
 
   const openAdmin = () => {
-    window.location.hash = 'admin';
     setIsAdminView(true);
   };
 
   const closeAdmin = () => {
-    window.location.hash = '';
     setIsAdminView(false);
   };
 

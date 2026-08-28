@@ -40,8 +40,17 @@ export interface SocialCaptionsResult {
   fallbackReason?: 'high_demand' | 'api_error' | 'no_key';
 }
 
-// Candidate models in priority order: newest model -> next newest -> stable fallback
-const MODEL_CASCADE = ['gemini-3.7-flash', 'gemini-2.5-flash', 'gemini-flash-latest'];
+// Candidate models in priority order:
+// 1. 'gemini-3.6-flash' - Primary recommended flash model (high reliability & verified quota)
+// 2. 'gemini-3.1-flash-lite' - Ultra-fast, high-availability lite model resilient to demand spikes
+// 3. 'gemini-3.7-flash' - Latest flash reasoning model
+// 4. 'gemini-flash-latest' - Stable flash alias
+const MODEL_CASCADE = [
+  'gemini-3.6-flash',
+  'gemini-3.1-flash-lite',
+  'gemini-3.7-flash',
+  'gemini-flash-latest',
+];
 
 function isRetryableError(error: any): boolean {
   const errMsg = (error?.message || error?.toString() || '').toLowerCase();
@@ -411,9 +420,11 @@ Generate 4 varied captions strictly adhering to the platform character constrain
     };
   };
 
-  // Try candidate models in cascade order with backoff retries (up to 3 retries per model)
+  // Try candidate models in cascade order.
+  // For retryable transient errors (e.g. 503 high demand spikes or 429), allow 1 quick jittered retry
+  // before advancing to the next model in cascade for maximum responsiveness and 99.9% uptime.
   for (const model of MODEL_CASCADE) {
-    const maxRetries = 3;
+    const maxRetries = 2;
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
       try {
         return await executeModelAttempt(model);
@@ -423,24 +434,24 @@ Generate 4 varied captions strictly adhering to the platform character constrain
 
         const isRetryable = isRetryableError(err);
         if (isRetryable && attempt < maxRetries) {
-          const backoff = attempt * 600 + Math.floor(Math.random() * 300);
+          const backoff = 400 + Math.floor(Math.random() * 250);
           await sleep(backoff);
           continue;
         }
 
-        // If error isn't retryable or exceeded attempts on this model, try next model in cascade
+        // If error isn't retryable or exceeded attempts on this model, advance immediately to next model
         break;
       }
     }
   }
 
-  // Before falling back to synthesis, if only ~2.5s spent across all attempts, do one final quick retry on stable model
+  // Before falling back to synthesis, if under 3.5s spent across all attempts, do one final quick retry on ultra-available lite model
   const elapsed = Date.now() - startTime;
-  if (elapsed < 2500) {
+  if (elapsed < 3500) {
     try {
-      console.log('[Gemini API] Executing fast 1.5s recovery retry on stable model before fallback...');
-      await sleep(1500);
-      return await executeModelAttempt('gemini-2.5-flash');
+      console.log('[Gemini API] Executing fast 1s recovery retry on gemini-3.1-flash-lite before fallback...');
+      await sleep(1000);
+      return await executeModelAttempt('gemini-3.1-flash-lite');
     } catch (finalRetryErr: any) {
       lastError = finalRetryErr;
       console.warn('[Gemini API] Final quick recovery attempt failed:', finalRetryErr?.message || finalRetryErr);

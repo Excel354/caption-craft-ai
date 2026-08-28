@@ -164,6 +164,27 @@ apiRouter.post('/auth/login', async (req: Request, res: Response) => {
   }
 });
 
+apiRouter.post('/auth/firebase-login', async (req: Request, res: Response) => {
+  try {
+    const { uid, email, name } = req.body;
+    if (!uid) {
+      res.status(400).json({ error: 'Firebase UID is required' });
+      return;
+    }
+
+    const { user, token } = db.syncFirebaseUser(uid, email || '', name);
+    const usage = db.getDailyUsage(user.id);
+
+    res.json({
+      user,
+      token,
+      usage,
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message || 'Firebase authentication failed' });
+  }
+});
+
 apiRouter.get('/auth/me', (req: AuthenticatedRequest, res: Response) => {
   const token = getBearerToken(req);
   if (!token) {
@@ -182,6 +203,39 @@ apiRouter.get('/auth/me', (req: AuthenticatedRequest, res: Response) => {
     user,
     usage,
   });
+});
+
+apiRouter.post('/auth/logout', (req: Request, res: Response) => {
+  const token = getBearerToken(req);
+  if (token) {
+    db.revokeUserSession(token);
+  }
+  res.json({ success: true, message: 'Logged out successfully' });
+});
+
+// -------------------------------------------------------------
+// Cloud-Persisted User Preferences & Read States
+// -------------------------------------------------------------
+
+apiRouter.post('/user/announcements/read', requireStrictUserAuth, (req: AuthenticatedRequest, res: Response) => {
+  const userId = req.userId!;
+  const timestamp = db.markAnnouncementsRead(userId);
+  res.json({ success: true, lastReadAnnouncementTime: timestamp });
+});
+
+apiRouter.post('/user/announcements/dismiss', requireStrictUserAuth, (req: AuthenticatedRequest, res: Response) => {
+  const userId = req.userId!;
+  const { announcementId } = req.body;
+  if (announcementId) {
+    db.dismissAnnouncementForUser(userId, announcementId);
+  }
+  res.json({ success: true, dismissedAnnouncementId: announcementId });
+});
+
+apiRouter.post('/user/onboarding/seen', requireStrictUserAuth, (req: AuthenticatedRequest, res: Response) => {
+  const userId = req.userId!;
+  db.setOnboardingSeenForUser(userId);
+  res.json({ success: true, hasSeenOnboarding: true });
 });
 
 // -------------------------------------------------------------

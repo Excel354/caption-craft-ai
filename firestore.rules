@@ -1,0 +1,133 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // 1. Global Catch-All Safety Net (Default Deny)
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // 2. Reusable Hardened Global Helpers
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() > 0 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    // Ping test document for Firestore connection verification
+    match /test/connection {
+      allow read: if true;
+    }
+
+    // 3. User Profile Validation Helper
+    function isValidUserProfile(data) {
+      return data.id is string && data.id.size() > 0 && data.id.size() <= 128 && data.id.matches('^[a-zA-Z0-9_\\-]+$')
+        && data.email is string && data.email.size() > 0 && data.email.size() <= 256
+        && data.plan is string && (data.plan == 'free' || data.plan == 'pro' || data.plan == 'premium')
+        && (!('name' in data) || (data.name is string && data.name.size() <= 128))
+        && (!('createdAt' in data) || (data.createdAt is string && data.createdAt.size() <= 64))
+        && (!('updatedAt' in data) || (data.updatedAt is string && data.updatedAt.size() <= 64))
+        && (!('hasSeenOnboarding' in data) || data.hasSeenOnboarding is bool)
+        && (!('lastReadAnnouncementTime' in data) || data.lastReadAnnouncementTime is number)
+        && (!('dismissedAnnouncementId' in data) || (data.dismissedAnnouncementId is string && data.dismissedAnnouncementId.size() <= 128));
+    }
+
+    // 4. Saved Caption Validation Helper
+    function isValidSavedCaption(data) {
+      return data.id is string && data.id.size() > 0 && data.id.size() <= 128 && data.id.matches('^[a-zA-Z0-9_\\-]+$')
+        && data.userId is string && data.userId.size() > 0 && data.userId.size() <= 128 && data.userId.matches('^[a-zA-Z0-9_\\-]+$')
+        && data.topic is string && data.topic.size() > 0 && data.topic.size() <= 500
+        && data.platform is string && (data.platform == 'instagram' || data.platform == 'tiktok' || data.platform == 'x' || data.platform == 'facebook' || data.platform == 'linkedin')
+        && data.caption is string && data.caption.size() <= 10000
+        && data.hashtags is list && data.hashtags.size() <= 50
+        && data.createdAt is string && data.createdAt.size() <= 64
+        && (!('isFavorite' in data) || data.isFavorite is bool);
+    }
+
+    // 5. Upgrade Request Validation Helper
+    function isValidUpgradeRequest(data) {
+      return data.id is string && data.id.size() > 0 && data.id.size() <= 128 && data.id.matches('^[a-zA-Z0-9_\\-]+$')
+        && data.userId is string && data.userId.size() > 0 && data.userId.size() <= 128 && data.userId.matches('^[a-zA-Z0-9_\\-]+$')
+        && data.plan is string && (data.plan == 'pro' || data.plan == 'premium')
+        && data.transferReference is string && data.transferReference.size() > 0 && data.transferReference.size() <= 128
+        && data.senderName is string && data.senderName.size() > 0 && data.senderName.size() <= 128
+        && data.status is string && (data.status == 'pending' || data.status == 'approved' || data.status == 'rejected')
+        && data.requestedAt is string && data.requestedAt.size() <= 64
+        && (!('userEmail' in data) || (data.userEmail is string && data.userEmail.size() <= 256))
+        && (!('userName' in data) || (data.userName is string && data.userName.size() <= 128))
+        && (!('notes' in data) || (data.notes is string && data.notes.size() <= 1000));
+    }
+
+    // 6. User Profile Document Rules
+    match /users/{userId} {
+      allow get: if isOwner(userId);
+      allow list: if false;
+
+      allow create: if isOwner(userId)
+        && isValidId(userId)
+        && incoming().id == userId
+        && isValidUserProfile(incoming());
+
+      allow update: if isOwner(userId)
+        && isValidId(userId)
+        && isValidUserProfile(incoming())
+        && incoming().id == existing().id
+        && incoming().email == existing().email;
+
+      allow delete: if isOwner(userId);
+
+      // 7. Saved Captions Subcollection
+      match /savedCaptions/{captionId} {
+        allow get, list: if isOwner(userId);
+
+        allow create: if isOwner(userId)
+          && isValidId(captionId)
+          && incoming().id == captionId
+          && incoming().userId == userId
+          && isValidSavedCaption(incoming());
+
+        allow update: if isOwner(userId)
+          && isValidId(captionId)
+          && incoming().id == existing().id
+          && incoming().userId == existing().userId
+          && isValidSavedCaption(incoming());
+
+        allow delete: if isOwner(userId)
+          && isValidId(captionId);
+      }
+
+      // 8. Upgrade Requests Subcollection
+      match /upgradeRequests/{requestId} {
+        allow get, list: if isOwner(userId);
+
+        allow create: if isOwner(userId)
+          && isValidId(requestId)
+          && incoming().id == requestId
+          && incoming().userId == userId
+          && incoming().status == 'pending'
+          && isValidUpgradeRequest(incoming());
+
+        // Users cannot alter status of submitted bank verification requests
+        allow update: if false;
+
+        allow delete: if isOwner(userId)
+          && isValidId(requestId);
+      }
+    }
+  }
+}

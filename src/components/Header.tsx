@@ -7,11 +7,34 @@ interface HeaderProps {
   onOpenHistory: () => void;
   onOpenUpgrade: () => void;
   onOpenOnboarding?: () => void;
+  onOpenAdmin?: () => void;
 }
 
-export const Header: React.FC<HeaderProps> = ({ onOpenHistory, onOpenUpgrade, onOpenOnboarding }) => {
+export const Header: React.FC<HeaderProps> = ({ onOpenHistory, onOpenUpgrade, onOpenOnboarding, onOpenAdmin }) => {
   const { user, isGuest, usage, logout, openAuthModal, openAnnouncements, unreadAnnouncementsCount } = useAuth();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+
+  // Hidden admin gesture state: 10 consecutive clicks within 2s windows
+  const logoClicksRef = React.useRef(0);
+  const lastLogoClickTimeRef = React.useRef(0);
+
+  const handleLogoClick = () => {
+    const now = Date.now();
+    if (now - lastLogoClickTimeRef.current > 2000) {
+      logoClicksRef.current = 1;
+    } else {
+      logoClicksRef.current += 1;
+    }
+    lastLogoClickTimeRef.current = now;
+
+    if (logoClicksRef.current >= 10) {
+      logoClicksRef.current = 0;
+      lastLogoClickTimeRef.current = 0;
+      if (onOpenAdmin) {
+        onOpenAdmin();
+      }
+    }
+  };
 
   const plan = user?.plan || 'free';
   const limit = usage?.limit ?? 10;
@@ -59,8 +82,11 @@ export const Header: React.FC<HeaderProps> = ({ onOpenHistory, onOpenUpgrade, on
   return (
     <header id="app-header" className="sticky top-0 z-30 w-full border-b border-slate-200 dark:border-slate-800 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md shrink-0 transition-colors">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between gap-4">
-        {/* Brand with Uploaded Logo */}
-        <div className="flex items-center gap-3">
+        {/* Brand with Uploaded Logo & Hidden Admin Gesture */}
+        <div
+          onClick={handleLogoClick}
+          className="flex items-center gap-3 select-none"
+        >
           <AppLogo size="md" />
           <div className="h-4 w-[1px] bg-slate-200 dark:bg-slate-700 mx-1 hidden sm:block"></div>
           <p className="hidden md:block text-[11px] text-slate-500 dark:text-slate-400 font-mono tracking-tight">

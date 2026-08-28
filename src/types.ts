@@ -42,6 +42,9 @@ export interface User {
   isSuspended?: boolean;
   suspendedAt?: string;
   pendingUpgrade?: UpgradeRequest | null;
+  lastReadAnnouncementTime?: number;
+  dismissedAnnouncementId?: string | null;
+  hasSeenOnboarding?: boolean;
 }
 
 export interface DailyUsage {
