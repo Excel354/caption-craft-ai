@@ -12,7 +12,7 @@ import {
   toggleCaptionFavoriteInFirestore,
   submitUpgradeRequestToFirestore,
 } from '../lib/firebase';
-import { onAuthStateChanged } from 'firebase/auth';
+import { onAuthStateChanged, User as FirebaseUser } from 'firebase/auth';
 
 interface AuthContextType {
   user: User | null;
@@ -76,6 +76,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [token, setToken] = useState<string | null>(() => localStorage.getItem('caption_token'));
   const [usage, setUsage] = useState<DailyUsage | null>(null);
   const [loading, setLoading] = useState(true);
+  const [firebaseUser, setFirebaseUser] = useState<FirebaseUser | null>(null);
   const [isFirebaseConnected, setIsFirebaseConnected] = useState(true);
   const [savedCaptions, setSavedCaptions] = useState<SavedItem[]>([]);
   const [announcement, setAnnouncement] = useState<SystemAnnouncement | null>(null);
@@ -86,6 +87,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [authModalMode, setAuthModalMode] = useState<'login' | 'register'>('login');
   const [authModalReason, setAuthModalReason] = useState<string | null>(null);
   const [isUpgradeModalOpen, setIsUpgradeModalOpen] = useState(false);
+
+  const isFirebaseUser = Boolean(firebaseUser && user?.id && firebaseUser.uid === user.id);
 
   const fetchAnnouncements = async (currentUser?: User | null) => {
     try {
@@ -129,7 +132,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const now = Date.now();
     localStorage.setItem('last_read_announcements_time', now.toString());
     setUnreadAnnouncementsCount(0);
-    if (user?.id) {
+    if (isFirebaseUser && user?.id) {
       updateUserFirestorePreferences(user.id, { lastReadAnnouncementTime: now }).catch(() => {});
     }
     if (token) {
@@ -188,35 +191,59 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  // Real-time Firestore subscription for user's saved captions
+  // Captions subscription & sync:
+  // Use Firestore real-time listener if authenticated in Firebase Auth;
+  // Otherwise, use server API /api/history for email/demo user sessions.
   useEffect(() => {
     if (!user?.id) {
       setSavedCaptions([]);
       return;
     }
 
-    try {
-      const unsubscribe = subscribeUserCaptions(
-        user.id,
-        (items) => {
-          setSavedCaptions(items);
-        },
-        (err) => {
-          console.warn('Firestore captions subscription warning:', err);
-        }
-      );
-      return () => unsubscribe();
-    } catch (err) {
-      console.warn('Could not initialize captions subscription:', err);
+    if (isFirebaseUser) {
+      try {
+        const unsubscribe = subscribeUserCaptions(
+          user.id,
+          (items) => {
+            setSavedCaptions(items);
+          },
+          (err) => {
+            console.warn('Firestore captions subscription warning:', err);
+          }
+        );
+        return () => unsubscribe();
+      } catch (err) {
+        console.warn('Could not initialize captions subscription:', err);
+      }
+    } else {
+      if (token) {
+        fetch('/api/history', {
+          headers: { Authorization: `Bearer ${token}` },
+        })
+          .then((res) => (res.ok ? res.json() : null))
+          .then((data) => {
+            if (data?.history) {
+              setSavedCaptions(data.history);
+            }
+          })
+          .catch(() => {});
+      }
     }
-  }, [user?.id]);
+  }, [user?.id, isFirebaseUser, token]);
 
   // Listen to Firebase Auth state
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (fbUser) => {
+      setFirebaseUser(fbUser);
       if (fbUser) {
         try {
-          const profile = await syncFirebaseUserProfile(fbUser);
+          let profile: User | null = null;
+          try {
+            profile = await syncFirebaseUserProfile(fbUser);
+          } catch (profileErr) {
+            console.warn('Firestore profile sync fallback:', profileErr);
+          }
+
           const res = await fetch('/api/auth/firebase-login', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -228,7 +255,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           });
           if (res.ok) {
             const data = await res.json();
-            const fullUser = { ...profile, ...data.user };
+            const fullUser: User = {
+              ...(profile || {}),
+              ...data.user,
+              id: fbUser.uid,
+              email: fbUser.email || data.user?.email || '',
+              name: fbUser.displayName || data.user?.name || 'Creator',
+              plan: profile?.plan || data.user?.plan || 'free',
+            };
             setUser(fullUser);
             setToken(data.token);
             setUsage(data.usage);
@@ -242,8 +276,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
       } else {
         // Not signed into Firebase Auth; check local token or guest
-        if (token) {
-          fetchCurrentUser(token);
+        const savedToken = localStorage.getItem('caption_token');
+        if (savedToken) {
+          fetchCurrentUser(savedToken);
         } else {
           fetchGuestUsage();
         }
@@ -259,7 +294,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const annId = announcement.id;
       localStorage.setItem('dismissed_announcement_id', annId);
       setAnnouncement(null);
-      if (user?.id) {
+      if (isFirebaseUser && user?.id) {
         updateUserFirestorePreferences(user.id, { dismissedAnnouncementId: annId }).catch(() => {});
       }
       if (token) {
@@ -277,7 +312,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const loginWithGoogle = async () => {
     const fbUser = await signInWithGooglePopup();
-    const firestoreUser = await syncFirebaseUserProfile(fbUser);
+    setFirebaseUser(fbUser);
+    let firestoreUser: User | null = null;
+    try {
+      firestoreUser = await syncFirebaseUserProfile(fbUser);
+    } catch (fsErr) {
+      console.warn('Firestore profile sync fallback:', fsErr);
+    }
 
     const res = await fetch('/api/auth/firebase-login', {
       method: 'POST',
@@ -291,9 +332,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     const data = await parseJsonResponse(res, 'Authentication failed');
     const fullUser: User = {
-      ...firestoreUser,
+      ...(firestoreUser || {}),
       ...data.user,
-      plan: firestoreUser.plan || data.user.plan || 'free',
+      id: fbUser.uid,
+      email: fbUser.email || data.user?.email || '',
+      name: fbUser.displayName || data.user?.name || 'Creator',
+      plan: firestoreUser?.plan || data.user?.plan || 'free',
     };
 
     setUser(fullUser);
@@ -312,6 +356,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       body: JSON.stringify({ email, password }),
     });
     const data = await parseJsonResponse(res, 'Login failed. Please check your credentials.');
+    setFirebaseUser(null);
     setUser(data.user);
     setToken(data.token);
     setUsage(data.usage);
@@ -328,6 +373,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       body: JSON.stringify({ email, password, name }),
     });
     const data = await parseJsonResponse(res, 'Registration failed. Please check your details.');
+    setFirebaseUser(null);
     setUser(data.user);
     setToken(data.token);
     setUsage(data.usage);
@@ -352,6 +398,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         // Ignore network errors on logout
       }
     }
+    setFirebaseUser(null);
     setUser(null);
     setToken(null);
     setSavedCaptions([]);
@@ -413,7 +460,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
 
     // Mirror to Firestore collection
-    if (user?.id && data.request) {
+    if (isFirebaseUser && user?.id && data.request) {
       try {
         await submitUpgradeRequestToFirestore(user.id, data.request);
       } catch (err) {
@@ -433,11 +480,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       return;
     }
 
-    // Persist to Firestore
-    try {
-      await saveCaptionToFirestore(user.id, item);
-    } catch (err) {
-      console.warn('Firestore caption save fallback:', err);
+    // Optimistic UI update
+    setSavedCaptions((prev) => [item, ...prev.filter((c) => c.id !== item.id)]);
+
+    // Persist to Firestore if authenticated Firebase user
+    if (isFirebaseUser) {
+      try {
+        await saveCaptionToFirestore(user.id, item);
+      } catch (err) {
+        console.warn('Firestore caption save fallback:', err);
+      }
     }
 
     // Also persist via server API if available
@@ -459,11 +511,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     // Optimistic UI update
     setSavedCaptions((prev) => prev.filter((item) => item.id !== id));
 
-    // Delete from Firestore
-    try {
-      await deleteCaptionFromFirestore(user.id, id);
-    } catch (err) {
-      console.warn('Firestore caption delete:', err);
+    // Delete from Firestore if authenticated Firebase user
+    if (isFirebaseUser) {
+      try {
+        await deleteCaptionFromFirestore(user.id, id);
+      } catch (err) {
+        console.warn('Firestore caption delete:', err);
+      }
     }
 
     // Delete from server API
@@ -477,10 +531,25 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const toggleFavorite = async (id: string, isFavorite: boolean) => {
     if (!user) return;
-    try {
-      await toggleCaptionFavoriteInFirestore(user.id, id, isFavorite);
-    } catch (err) {
-      console.warn('Firestore toggle favorite:', err);
+
+    // Optimistic UI update
+    setSavedCaptions((prev) =>
+      prev.map((item) => (item.id === id ? { ...item, isFavorite } : item))
+    );
+
+    if (isFirebaseUser) {
+      try {
+        await toggleCaptionFavoriteInFirestore(user.id, id, isFavorite);
+      } catch (err) {
+        console.warn('Firestore toggle favorite:', err);
+      }
+    }
+
+    if (token) {
+      fetch(`/api/history/favorite/${id}`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+      }).catch(() => {});
     }
   };
 

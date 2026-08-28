@@ -283,6 +283,11 @@ class Database {
 
     if (!user && normalizedEmail) {
       user = Object.values(this.data.users).find(u => u.email === normalizedEmail);
+      if (user) {
+        delete this.data.users[user.id];
+        user.id = uid;
+        this.data.users[uid] = user;
+      }
     }
 
     if (!user) {
@@ -298,6 +303,7 @@ class Database {
       };
       this.data.users[uid] = user;
     } else {
+      user.id = uid;
       if (normalizedEmail) user.email = normalizedEmail;
       if (name?.trim()) user.name = name.trim();
       this.data.users[uid] = user;
@@ -515,19 +521,25 @@ class Database {
   // User History Management (Per-User)
   // -------------------------------------------------------------
 
-  public addHistory(userId: string, item: Omit<SavedItem, 'id' | 'createdAt' | 'userId'>): SavedItem {
+  public addHistory(userId: string, item: Omit<SavedItem, 'userId' | 'id' | 'createdAt'> & { id?: string; createdAt?: string }): SavedItem {
     if (!this.data.userHistory[userId]) {
       this.data.userHistory[userId] = [];
     }
 
     const newItem: SavedItem = {
       ...item,
-      id: 'hist_' + crypto.randomUUID().slice(0, 8),
+      id: item.id || ('hist_' + crypto.randomUUID().slice(0, 8)),
       userId,
-      createdAt: new Date().toISOString(),
+      createdAt: item.createdAt || new Date().toISOString(),
     };
 
-    this.data.userHistory[userId].unshift(newItem);
+    const existingIndex = this.data.userHistory[userId].findIndex(h => h.id === newItem.id);
+    if (existingIndex >= 0) {
+      this.data.userHistory[userId][existingIndex] = { ...this.data.userHistory[userId][existingIndex], ...newItem };
+    } else {
+      this.data.userHistory[userId].unshift(newItem);
+    }
+
     // Keep last 100 per user
     if (this.data.userHistory[userId].length > 100) {
       this.data.userHistory[userId].pop();

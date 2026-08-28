@@ -502,6 +502,17 @@ apiRouter.get('/history', optionalOrGuestAuth, (req: AuthenticatedRequest, res: 
   res.json({ history, isGuest: false });
 });
 
+apiRouter.post('/history', requireStrictUserAuth, (req: AuthenticatedRequest, res: Response) => {
+  const userId = req.userId!;
+  const item = req.body;
+  if (!item || !item.caption) {
+    res.status(400).json({ error: 'Caption is required' });
+    return;
+  }
+  const saved = db.addHistory(userId, item);
+  res.json({ success: true, item: saved });
+});
+
 apiRouter.delete('/history/:id', requireStrictUserAuth, (req: AuthenticatedRequest, res: Response) => {
   const userId = req.userId!;
   const { id } = req.params;

@@ -110,9 +110,19 @@ export async function syncFirebaseUserProfile(fbUser: FirebaseUser, existingProf
         dismissedAnnouncementId: data.dismissedAnnouncementId ?? null,
       };
 
-      // Refresh name if updated in provider
+      // Refresh name or email if updated in provider
+      const patch: Record<string, any> = { id: fbUser.uid, updatedAt: nowIso };
+      let needsUpdate = false;
       if (fbUser.displayName && fbUser.displayName !== data.name) {
-        await setDoc(userDocRef, { name: fbUser.displayName, updatedAt: nowIso }, { merge: true });
+        patch.name = fbUser.displayName;
+        needsUpdate = true;
+      }
+      if (fbUser.email && fbUser.email !== data.email) {
+        patch.email = fbUser.email;
+        needsUpdate = true;
+      }
+      if (needsUpdate) {
+        await setDoc(userDocRef, patch, { merge: true });
       }
 
       return updatedUser;
@@ -129,7 +139,7 @@ export async function syncFirebaseUserProfile(fbUser: FirebaseUser, existingProf
         dismissedAnnouncementId: existingProfile?.dismissedAnnouncementId ?? null,
       };
 
-      await setDoc(userDocRef, {
+      const docPayload: Record<string, any> = {
         id: newUser.id,
         email: newUser.email,
         name: newUser.name,
@@ -138,8 +148,12 @@ export async function syncFirebaseUserProfile(fbUser: FirebaseUser, existingProf
         updatedAt: nowIso,
         hasSeenOnboarding: newUser.hasSeenOnboarding,
         lastReadAnnouncementTime: newUser.lastReadAnnouncementTime,
-        dismissedAnnouncementId: newUser.dismissedAnnouncementId,
-      });
+      };
+      if (newUser.dismissedAnnouncementId) {
+        docPayload.dismissedAnnouncementId = newUser.dismissedAnnouncementId;
+      }
+
+      await setDoc(userDocRef, docPayload);
 
       return newUser;
     }
@@ -153,9 +167,28 @@ export async function updateUserFirestorePreferences(
   updates: Partial<Pick<User, 'hasSeenOnboarding' | 'lastReadAnnouncementTime' | 'dismissedAnnouncementId' | 'plan'>>
 ): Promise<void> {
   const path = `users/${userId}`;
+  if (!auth.currentUser || auth.currentUser.uid !== userId) {
+    return;
+  }
   try {
     const userDocRef = doc(db, 'users', userId);
-    await setDoc(userDocRef, { ...updates, updatedAt: new Date().toISOString() }, { merge: true });
+    const sanitizedUpdates: Record<string, any> = {
+      id: userId,
+      updatedAt: new Date().toISOString(),
+    };
+    if (updates.hasSeenOnboarding !== undefined) {
+      sanitizedUpdates.hasSeenOnboarding = updates.hasSeenOnboarding;
+    }
+    if (updates.lastReadAnnouncementTime !== undefined) {
+      sanitizedUpdates.lastReadAnnouncementTime = updates.lastReadAnnouncementTime;
+    }
+    if (updates.dismissedAnnouncementId !== undefined && updates.dismissedAnnouncementId !== null) {
+      sanitizedUpdates.dismissedAnnouncementId = updates.dismissedAnnouncementId;
+    }
+    if (updates.plan !== undefined) {
+      sanitizedUpdates.plan = updates.plan;
+    }
+    await setDoc(userDocRef, sanitizedUpdates, { merge: true });
   } catch (error) {
     handleFirestoreError(error, OperationType.UPDATE, path);
   }
@@ -171,6 +204,11 @@ export function subscribeUserCaptions(
   onError?: (err: Error) => void
 ): Unsubscribe {
   const colPath = `users/${userId}/savedCaptions`;
+  // Only attach onSnapshot listener if authenticated and UID matches
+  if (!auth.currentUser || auth.currentUser.uid !== userId) {
+    return () => {};
+  }
+
   const q = query(collection(db, 'users', userId, 'savedCaptions'), orderBy('createdAt', 'desc'));
 
   return onSnapshot(
@@ -193,6 +231,9 @@ export function subscribeUserCaptions(
 
 export async function saveCaptionToFirestore(userId: string, item: SavedItem): Promise<void> {
   const path = `users/${userId}/savedCaptions/${item.id}`;
+  if (!auth.currentUser || auth.currentUser.uid !== userId) {
+    return;
+  }
   try {
     const ref = doc(db, 'users', userId, 'savedCaptions', item.id);
     await setDoc(ref, {
@@ -212,6 +253,9 @@ export async function saveCaptionToFirestore(userId: string, item: SavedItem): P
 
 export async function deleteCaptionFromFirestore(userId: string, captionId: string): Promise<void> {
   const path = `users/${userId}/savedCaptions/${captionId}`;
+  if (!auth.currentUser || auth.currentUser.uid !== userId) {
+    return;
+  }
   try {
     const ref = doc(db, 'users', userId, 'savedCaptions', captionId);
     await deleteDoc(ref);
@@ -222,6 +266,9 @@ export async function deleteCaptionFromFirestore(userId: string, captionId: stri
 
 export async function toggleCaptionFavoriteInFirestore(userId: string, captionId: string, isFavorite: boolean): Promise<void> {
   const path = `users/${userId}/savedCaptions/${captionId}`;
+  if (!auth.currentUser || auth.currentUser.uid !== userId) {
+    return;
+  }
   try {
     const ref = doc(db, 'users', userId, 'savedCaptions', captionId);
     await setDoc(ref, { isFavorite }, { merge: true });
@@ -236,6 +283,9 @@ export async function toggleCaptionFavoriteInFirestore(userId: string, captionId
 
 export async function submitUpgradeRequestToFirestore(userId: string, req: UpgradeRequest): Promise<void> {
   const path = `users/${userId}/upgradeRequests/${req.id}`;
+  if (!auth.currentUser || auth.currentUser.uid !== userId) {
+    return;
+  }
   try {
     const ref = doc(db, 'users', userId, 'upgradeRequests', req.id);
     await setDoc(ref, {

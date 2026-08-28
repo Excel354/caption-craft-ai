@@ -18,7 +18,7 @@ service cloud.firestore {
     }
 
     function isValidId(id) {
-      return id is string && id.size() > 0 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+      return id is string && id.size() > 0 && id.size() <= 128;
     }
 
     function incoming() {
@@ -36,41 +36,41 @@ service cloud.firestore {
 
     // 3. User Profile Validation Helper
     function isValidUserProfile(data) {
-      return data.id is string && data.id.size() > 0 && data.id.size() <= 128 && data.id.matches('^[a-zA-Z0-9_\\-]+$')
-        && data.email is string && data.email.size() > 0 && data.email.size() <= 256
-        && data.plan is string && (data.plan == 'free' || data.plan == 'pro' || data.plan == 'premium')
-        && (!('name' in data) || (data.name is string && data.name.size() <= 128))
-        && (!('createdAt' in data) || (data.createdAt is string && data.createdAt.size() <= 64))
-        && (!('updatedAt' in data) || (data.updatedAt is string && data.updatedAt.size() <= 64))
-        && (!('hasSeenOnboarding' in data) || data.hasSeenOnboarding is bool)
-        && (!('lastReadAnnouncementTime' in data) || data.lastReadAnnouncementTime is number)
-        && (!('dismissedAnnouncementId' in data) || (data.dismissedAnnouncementId is string && data.dismissedAnnouncementId.size() <= 128));
+      return data.id is string && data.id.size() > 0 && data.id.size() <= 128
+        && (!('email' in data) || data.email == null || (data.email is string && data.email.size() <= 256))
+        && (!('plan' in data) || (data.plan is string && (data.plan == 'free' || data.plan == 'pro' || data.plan == 'premium')))
+        && (!('name' in data) || data.name == null || (data.name is string && data.name.size() <= 128))
+        && (!('createdAt' in data) || data.createdAt == null || (data.createdAt is string && data.createdAt.size() <= 64))
+        && (!('updatedAt' in data) || data.updatedAt == null || (data.updatedAt is string && data.updatedAt.size() <= 64))
+        && (!('hasSeenOnboarding' in data) || data.hasSeenOnboarding == null || data.hasSeenOnboarding is bool)
+        && (!('lastReadAnnouncementTime' in data) || data.lastReadAnnouncementTime == null || data.lastReadAnnouncementTime is int || data.lastReadAnnouncementTime is float)
+        && (!('dismissedAnnouncementId' in data) || data.dismissedAnnouncementId == null || (data.dismissedAnnouncementId is string && data.dismissedAnnouncementId.size() <= 128));
     }
 
     // 4. Saved Caption Validation Helper
     function isValidSavedCaption(data) {
-      return data.id is string && data.id.size() > 0 && data.id.size() <= 128 && data.id.matches('^[a-zA-Z0-9_\\-]+$')
-        && data.userId is string && data.userId.size() > 0 && data.userId.size() <= 128 && data.userId.matches('^[a-zA-Z0-9_\\-]+$')
+      return data.id is string && data.id.size() > 0 && data.id.size() <= 128
+        && data.userId is string && data.userId.size() > 0 && data.userId.size() <= 128
         && data.topic is string && data.topic.size() > 0 && data.topic.size() <= 500
         && data.platform is string && (data.platform == 'instagram' || data.platform == 'tiktok' || data.platform == 'x' || data.platform == 'facebook' || data.platform == 'linkedin')
         && data.caption is string && data.caption.size() <= 10000
         && data.hashtags is list && data.hashtags.size() <= 50
         && data.createdAt is string && data.createdAt.size() <= 64
-        && (!('isFavorite' in data) || data.isFavorite is bool);
+        && (!('isFavorite' in data) || data.isFavorite == null || data.isFavorite is bool);
     }
 
     // 5. Upgrade Request Validation Helper
     function isValidUpgradeRequest(data) {
-      return data.id is string && data.id.size() > 0 && data.id.size() <= 128 && data.id.matches('^[a-zA-Z0-9_\\-]+$')
-        && data.userId is string && data.userId.size() > 0 && data.userId.size() <= 128 && data.userId.matches('^[a-zA-Z0-9_\\-]+$')
+      return data.id is string && data.id.size() > 0 && data.id.size() <= 128
+        && data.userId is string && data.userId.size() > 0 && data.userId.size() <= 128
         && data.plan is string && (data.plan == 'pro' || data.plan == 'premium')
         && data.transferReference is string && data.transferReference.size() > 0 && data.transferReference.size() <= 128
         && data.senderName is string && data.senderName.size() > 0 && data.senderName.size() <= 128
         && data.status is string && (data.status == 'pending' || data.status == 'approved' || data.status == 'rejected')
         && data.requestedAt is string && data.requestedAt.size() <= 64
-        && (!('userEmail' in data) || (data.userEmail is string && data.userEmail.size() <= 256))
-        && (!('userName' in data) || (data.userName is string && data.userName.size() <= 128))
-        && (!('notes' in data) || (data.notes is string && data.notes.size() <= 1000));
+        && (!('userEmail' in data) || data.userEmail == null || (data.userEmail is string && data.userEmail.size() <= 256))
+        && (!('userName' in data) || data.userName == null || (data.userName is string && data.userName.size() <= 128))
+        && (!('notes' in data) || data.notes == null || (data.notes is string && data.notes.size() <= 1000));
     }
 
     // 6. User Profile Document Rules
@@ -85,9 +85,8 @@ service cloud.firestore {
 
       allow update: if isOwner(userId)
         && isValidId(userId)
-        && isValidUserProfile(incoming())
-        && incoming().id == existing().id
-        && incoming().email == existing().email;
+        && incoming().id == userId
+        && isValidUserProfile(incoming());
 
       allow delete: if isOwner(userId);
 
@@ -103,8 +102,8 @@ service cloud.firestore {
 
         allow update: if isOwner(userId)
           && isValidId(captionId)
-          && incoming().id == existing().id
-          && incoming().userId == existing().userId
+          && incoming().id == captionId
+          && incoming().userId == userId
           && isValidSavedCaption(incoming());
 
         allow delete: if isOwner(userId)
