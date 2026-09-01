@@ -52,14 +52,14 @@ export const AnnouncementsDrawer: React.FC = () => {
         <div id="announcements-drawer-overlay" className="fixed inset-0 z-50 overflow-hidden bg-slate-950/50 backdrop-blur-xs">
           <div className="absolute inset-0" onClick={closeAnnouncements} />
 
-          <div className="fixed inset-y-0 right-0 max-w-full flex pl-10">
+          <div className="fixed inset-y-0 right-0 max-w-full flex pl-0 sm:pl-10">
             <motion.div
               initial={{ x: '100%' }}
               animate={{ x: 0 }}
               exit={{ x: '100%' }}
               transition={{ type: 'spring', damping: 25, stiffness: 250 }}
               id="announcements-drawer-container"
-              className="w-screen max-w-md bg-white dark:bg-slate-900 shadow-2xl border-l border-slate-200 dark:border-slate-800 flex flex-col"
+              className="w-full sm:w-screen max-w-md bg-white dark:bg-slate-900 shadow-2xl border-l border-slate-200 dark:border-slate-800 flex flex-col"
             >
               {/* Header */}
               <div className="p-5 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between bg-slate-50/70 dark:bg-slate-900/70">

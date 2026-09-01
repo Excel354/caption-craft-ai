@@ -81,24 +81,24 @@ export const Header: React.FC<HeaderProps> = ({ onOpenHistory, onOpenUpgrade, on
   const percentUsed = limit === -1 ? 0 : Math.min(100, Math.round((count / limit) * 100));
 
   return (
-    <header id="app-header" className="sticky top-0 z-30 w-full border-b border-slate-200 dark:border-slate-800 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md shrink-0 transition-colors">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between gap-4">
+    <header id="app-header" className="sticky top-0 z-30 w-full max-w-full overflow-hidden border-b border-slate-200 dark:border-slate-800 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md shrink-0 transition-colors">
+      <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 h-16 flex items-center justify-between gap-2 sm:gap-4">
         {/* Brand with Uploaded Logo & Hidden Admin Gesture */}
         <div
           onClick={handleLogoClick}
-          className="flex items-center gap-3 select-none"
+          className="flex items-center gap-2 sm:gap-3 select-none cursor-pointer shrink-0"
         >
           <AppLogo size="md" />
-          <div className="h-4 w-[1px] bg-slate-200 dark:bg-slate-700 mx-1 hidden sm:block"></div>
+          <div className="h-4 w-[1px] bg-slate-200 dark:bg-slate-700 mx-1 hidden md:block"></div>
           <p className="hidden md:block text-[11px] text-slate-500 dark:text-slate-400 font-mono tracking-tight">
             AI Social Media Caption & Hashtag Suite
           </p>
         </div>
 
         {/* Right side controls */}
-        <div className="flex items-center gap-2 sm:gap-3">
-          {/* Daily Quota pill */}
-          <div className="hidden sm:flex flex-col items-end text-xs font-mono">
+        <div className="flex items-center gap-1.5 sm:gap-2.5 shrink-0">
+          {/* Daily Quota pill (Desktop) */}
+          <div className="hidden lg:flex flex-col items-end text-xs font-mono">
             <div className="flex items-center gap-1.5 font-medium text-slate-700 dark:text-slate-300 text-[11px]">
               {limit === -1 ? (
                 <span className="flex items-center gap-1 text-emerald-600 dark:text-emerald-400 font-mono font-bold">
@@ -127,26 +127,63 @@ export const Header: React.FC<HeaderProps> = ({ onOpenHistory, onOpenUpgrade, on
             )}
           </div>
 
-          {/* Plan badge */}
-          <div className="hidden lg:block">{getPlanBadge()}</div>
+          {/* Plan badge (Desktop) */}
+          <div className="hidden xl:block">{getPlanBadge()}</div>
 
-          {/* Upgrade CTA */}
-          {plan !== 'premium' && (
-            <button
-              id="header-upgrade-btn"
-              onClick={onOpenUpgrade}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold font-mono uppercase tracking-wider text-white bg-violet-600 hover:bg-violet-700 rounded-xl shadow-md shadow-violet-600/25 border border-violet-500/30 transition active:scale-95 cursor-pointer"
-            >
-              <Crown className="w-3.5 h-3.5 text-amber-400" />
-              <span>{isPendingUpgrade ? 'Upgrade Info' : 'Go Pro'}</span>
-            </button>
-          )}
+          {/* Subscription Status & Upgrade CTA Button */}
+          <button
+            id="header-upgrade-btn"
+            onClick={onOpenUpgrade}
+            className={`inline-flex items-center gap-1 sm:gap-1.5 px-2.5 sm:px-3 py-1.5 text-[11px] sm:text-xs font-bold font-mono uppercase tracking-wider rounded-xl transition active:scale-95 cursor-pointer whitespace-nowrap shadow-sm ${
+              plan === 'premium'
+                ? 'bg-gradient-to-r from-amber-400 via-amber-500 to-yellow-400 text-slate-950 font-black border border-amber-300 shadow-amber-500/25 hover:brightness-105'
+                : plan === 'pro'
+                ? 'bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white border border-emerald-400/40 shadow-emerald-600/25'
+                : isPendingUpgrade
+                ? 'bg-amber-500/15 hover:bg-amber-500/25 text-amber-700 dark:text-amber-300 border border-amber-500/40'
+                : 'text-white bg-violet-600 hover:bg-violet-700 shadow-violet-600/25 border border-violet-500/30'
+            }`}
+            title={
+              plan === 'premium'
+                ? 'Premium Subscription Active (Unlimited Generations)'
+                : plan === 'pro'
+                ? 'Creator Pro Subscription Active (50/Day)'
+                : isPendingUpgrade
+                ? 'Bank Transfer Pending Admin Verification'
+                : 'Upgrade to Creator Pro or Agency Premium'
+            }
+          >
+            {plan === 'premium' ? (
+              <>
+                <Crown className="w-3.5 h-3.5 text-slate-950 shrink-0" />
+                <span className="hidden xs:inline sm:inline">Premium Active</span>
+                <span className="inline xs:hidden sm:hidden">Premium</span>
+              </>
+            ) : plan === 'pro' ? (
+              <>
+                <Zap className="w-3.5 h-3.5 text-amber-300 shrink-0" />
+                <span className="hidden xs:inline sm:inline">Pro Active</span>
+                <span className="inline xs:hidden sm:hidden">Pro</span>
+              </>
+            ) : isPendingUpgrade ? (
+              <>
+                <Clock className="w-3.5 h-3.5 text-amber-500 animate-spin shrink-0" />
+                <span className="hidden xs:inline sm:inline">Pending</span>
+                <span className="inline xs:hidden sm:hidden">Pending</span>
+              </>
+            ) : (
+              <>
+                <Crown className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                <span>Go Pro</span>
+              </>
+            )}
+          </button>
 
           {/* Bell Icon / Announcements Drawer */}
           <button
             id="header-announcements-btn"
             onClick={openAnnouncements}
-            className="relative p-2 text-slate-600 dark:text-slate-300 hover:text-violet-600 dark:hover:text-violet-400 hover:bg-violet-50 dark:hover:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 transition cursor-pointer"
+            className="relative p-1.5 sm:p-2 text-slate-600 dark:text-slate-300 hover:text-violet-600 dark:hover:text-violet-400 hover:bg-violet-50 dark:hover:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 transition cursor-pointer shrink-0"
             title="Announcements & Inbox"
             aria-label="Announcements"
           >
@@ -162,7 +199,7 @@ export const Header: React.FC<HeaderProps> = ({ onOpenHistory, onOpenUpgrade, on
           <button
             id="header-history-btn"
             onClick={onOpenHistory}
-            className="p-2 text-slate-600 dark:text-slate-300 hover:text-violet-600 dark:hover:text-violet-400 hover:bg-violet-50 dark:hover:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 transition cursor-pointer"
+            className="p-1.5 sm:p-2 text-slate-600 dark:text-slate-300 hover:text-violet-600 dark:hover:text-violet-400 hover:bg-violet-50 dark:hover:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 transition cursor-pointer shrink-0"
             title="Saved Captions & History"
             aria-label="History"
           >
@@ -177,7 +214,7 @@ export const Header: React.FC<HeaderProps> = ({ onOpenHistory, onOpenUpgrade, on
             <button
               id="header-onboarding-btn"
               onClick={onOpenOnboarding}
-              className="p-2 text-slate-600 dark:text-slate-300 hover:text-violet-600 dark:hover:text-violet-400 hover:bg-violet-50 dark:hover:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 transition cursor-pointer hidden sm:flex items-center justify-center"
+              className="p-1.5 sm:p-2 text-slate-600 dark:text-slate-300 hover:text-violet-600 dark:hover:text-violet-400 hover:bg-violet-50 dark:hover:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 transition cursor-pointer hidden sm:flex items-center justify-center shrink-0"
               title="Why Captions Matter Guide"
               aria-label="Creator Guide"
             >
@@ -187,11 +224,11 @@ export const Header: React.FC<HeaderProps> = ({ onOpenHistory, onOpenUpgrade, on
 
           {/* User Account / Guest Sign In */}
           {isGuest ? (
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
               <button
                 id="header-login-btn"
                 onClick={() => openAuthModal('login')}
-                className="px-3 py-1.5 text-xs font-semibold text-slate-700 dark:text-slate-200 hover:text-violet-600 bg-slate-100 hover:bg-violet-50 dark:bg-slate-800 dark:hover:bg-slate-700 rounded-xl border border-slate-200 dark:border-slate-700 transition cursor-pointer flex items-center gap-1.5"
+                className="px-2.5 sm:px-3 py-1.5 text-xs font-semibold text-slate-700 dark:text-slate-200 hover:text-violet-600 bg-slate-100 hover:bg-violet-50 dark:bg-slate-800 dark:hover:bg-slate-700 rounded-xl border border-slate-200 dark:border-slate-700 transition cursor-pointer flex items-center gap-1 sm:gap-1.5"
               >
                 <LogIn className="w-3.5 h-3.5" />
                 <span>Log In</span>
@@ -205,16 +242,16 @@ export const Header: React.FC<HeaderProps> = ({ onOpenHistory, onOpenUpgrade, on
               </button>
             </div>
           ) : (
-            <div className="relative">
+            <div className="relative shrink-0">
               <button
                 id="header-user-menu-btn"
                 onClick={() => setIsMenuOpen(!isMenuOpen)}
-                className="flex items-center gap-2 pl-2 pr-2.5 py-1.5 text-xs font-medium text-slate-700 dark:text-slate-200 bg-slate-50 hover:bg-violet-50 dark:bg-slate-800 dark:hover:bg-slate-700 rounded-xl border border-slate-200 dark:border-slate-700 transition cursor-pointer"
+                className="flex items-center gap-1.5 sm:gap-2 p-1.5 sm:pl-2 sm:pr-2.5 sm:py-1.5 text-xs font-medium text-slate-700 dark:text-slate-200 bg-slate-50 hover:bg-violet-50 dark:bg-slate-800 dark:hover:bg-slate-700 rounded-xl border border-slate-200 dark:border-slate-700 transition cursor-pointer"
               >
                 <div className="w-6 h-6 rounded-lg bg-violet-600 text-white flex items-center justify-center text-[10px] font-mono font-bold shadow-xs">
                   {user?.name ? user.name[0].toUpperCase() : 'U'}
                 </div>
-                <span className="max-w-[90px] truncate hidden sm:inline-block font-medium text-xs">
+                <span className="max-w-[70px] sm:max-w-[90px] truncate hidden sm:inline-block font-medium text-xs">
                   {user?.name || 'Account'}
                 </span>
                 <ChevronDown className="w-3 h-3 text-slate-400" />
