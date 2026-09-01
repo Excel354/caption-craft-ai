@@ -652,6 +652,111 @@ apiRouter.post('/admin/bank-config', requireAdminAuth, (req: Request, res: Respo
   res.json({ success: true, bankConfig: updated });
 });
 
+// -------------------------------------------------------------
+// User Help & Support Messaging Routes
+// -------------------------------------------------------------
+
+apiRouter.get('/support/messages', (req: AuthenticatedRequest, res: Response) => {
+  const token = getBearerToken(req);
+  const user = token ? db.getUserByToken(token) : null;
+  const guestId = (req.headers['x-guest-id'] as string) || req.ip || 'guest';
+  const userId = user ? user.id : guestId;
+  const userEmail = user ? user.email : undefined;
+
+  const messages = db.getSupportMessagesForUser(userId, userEmail);
+  const unreadCount = db.getUnreadSupportCountForUser(userId, userEmail);
+
+  res.json({ messages, unreadCount });
+});
+
+apiRouter.post('/support/messages', (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const token = getBearerToken(req);
+    const user = token ? db.getUserByToken(token) : null;
+    const guestId = (req.headers['x-guest-id'] as string) || req.ip || 'guest';
+    const userId = user ? user.id : guestId;
+    const userName = user ? user.name : (req.body.senderName || 'Creator');
+    const userEmail = user ? user.email : (req.body.senderEmail || '');
+    const { message, subject } = req.body;
+
+    if (!message || !message.trim()) {
+      res.status(400).json({ error: 'Message cannot be empty' });
+      return;
+    }
+
+    const newMsg = db.addSupportMessage({
+      conversationId: userId,
+      senderRole: 'user',
+      senderId: userId,
+      senderName: userName,
+      senderEmail: userEmail,
+      recipientId: 'admin',
+      subject: subject || 'Help Request',
+      message: message.trim(),
+    });
+
+    res.json({ success: true, message: newMsg });
+  } catch (err: any) {
+    res.status(400).json({ error: err.message || 'Failed to send support message' });
+  }
+});
+
+apiRouter.post('/support/messages/read', (req: AuthenticatedRequest, res: Response) => {
+  const token = getBearerToken(req);
+  const user = token ? db.getUserByToken(token) : null;
+  const guestId = (req.headers['x-guest-id'] as string) || req.ip || 'guest';
+  const userId = user ? user.id : guestId;
+  const userEmail = user ? user.email : undefined;
+
+  db.markSupportMessagesReadByUser(userId, userEmail);
+  res.json({ success: true });
+});
+
+// -------------------------------------------------------------
+// Admin Support & Messaging Routes
+// -------------------------------------------------------------
+
+apiRouter.get('/admin/support/conversations', requireAdminAuth, (req: Request, res: Response) => {
+  const conversations = db.getAllSupportConversations();
+  res.json({ conversations });
+});
+
+apiRouter.get('/admin/support/conversations/:userId', requireAdminAuth, (req: Request, res: Response) => {
+  const { userId } = req.params;
+  const messages = db.getMessagesForConversation(userId);
+  db.markConversationReadByAdmin(userId);
+  res.json({ messages });
+});
+
+apiRouter.post('/admin/support/send', requireAdminAuth, (req: Request, res: Response) => {
+  try {
+    const { recipientId, subject, message } = req.body;
+    if (!recipientId) {
+      res.status(400).json({ error: 'recipientId is required' });
+      return;
+    }
+    if (!message || !message.trim()) {
+      res.status(400).json({ error: 'Message content cannot be empty' });
+      return;
+    }
+
+    const newMsg = db.addSupportMessage({
+      conversationId: recipientId,
+      senderRole: 'admin',
+      senderId: 'admin',
+      senderName: 'Admin Team',
+      senderEmail: 'support@captiongenerator.app',
+      recipientId,
+      subject: subject || 'Direct Message from Admin',
+      message: message.trim(),
+    });
+
+    res.json({ success: true, message: newMsg });
+  } catch (err: any) {
+    res.status(400).json({ error: err.message || 'Failed to send message to user' });
+  }
+});
+
 // Mount the apiRouter under both `/api` and `/` so requests like `/api/generate` or stripped `/generate` both resolve
 app.use('/api', apiRouter);
 

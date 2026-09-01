@@ -10,33 +10,40 @@
       "createdAt": "2026-08-28T10:14:46.289Z",
       "isSuspended": false
     },
-    "usr_e808a157": {
-      "id": "usr_e808a157",
+    "CmH43OcFDEMzTQjAZ9NpwU6MQXi2": {
+      "id": "CmH43OcFDEMzTQjAZ9NpwU6MQXi2",
       "email": "coolexcellence354@gmail.com",
       "name": "Clement Imoh Excellence",
-      "plan": "free",
+      "plan": "premium",
       "passwordHash": "f254f3da1cd98d5bef5f0e3b789701316539cd4d682d53f7d74aa8fb7d9d2d13366bf8d7702f63cdad5fb825fef81b14afe3f8b4904fee4bf9e301e1124212e6",
       "passwordSalt": "5d8665e6d6f171baf0853fad89aaa405",
       "createdAt": "2026-08-28T10:29:36.085Z",
       "isSuspended": false,
-      "lastReadAnnouncementTime": 1787913161341
+      "lastReadAnnouncementTime": 1787913161341,
+      "pendingUpgrade": null
     }
   },
   "sessions": {
-    "e57bcd50b0a69d9899672a41d1147110eba5406aae293db3b75597950ecc9647": {
-      "token": "e57bcd50b0a69d9899672a41d1147110eba5406aae293db3b75597950ecc9647",
-      "userId": "usr_e808a157",
-      "createdAt": 1787912976085
+    "fb_2abf950323333a8dda9b6f87146f6b95c023f2ab70764b0c0dd3da88b272ea62": {
+      "token": "fb_2abf950323333a8dda9b6f87146f6b95c023f2ab70764b0c0dd3da88b272ea62",
+      "userId": "CmH43OcFDEMzTQjAZ9NpwU6MQXi2",
+      "createdAt": 1787915693465
+    },
+    "fb_d3add96c4e1c643434df1676b2ebf84b29f623719ec602c83a240fdde577964d": {
+      "token": "fb_d3add96c4e1c643434df1676b2ebf84b29f623719ec602c83a240fdde577964d",
+      "userId": "CmH43OcFDEMzTQjAZ9NpwU6MQXi2",
+      "createdAt": 1787918682816
     }
   },
   "dailyUsage": {
-    "usr_e808a157:2026-08-28": 1,
-    "gst_3132372e302e:2026-08-28": 1
+    "usr_e808a157:2026-08-28": 2,
+    "gst_3132372e302e:2026-08-28": 1,
+    "CmH43OcFDEMzTQjAZ9NpwU6MQXi2:2026-08-28": 3
   },
   "dailyUsageDetails": {
     "usr_e808a157:2026-08-28": {
-      "count": 1,
-      "realGeminiCalls": 0,
+      "count": 2,
+      "realGeminiCalls": 2,
       "cachedCalls": 0,
       "fallbackCalls": 6,
       "repeatedNudgeCount": 0
@@ -47,10 +54,168 @@
       "cachedCalls": 0,
       "fallbackCalls": 1,
       "repeatedNudgeCount": 0
+    },
+    "CmH43OcFDEMzTQjAZ9NpwU6MQXi2:2026-08-28": {
+      "count": 3,
+      "realGeminiCalls": 2,
+      "cachedCalls": 1,
+      "fallbackCalls": 0,
+      "repeatedNudgeCount": 1
     }
   },
-  "userHistory": {},
-  "upgradeRequests": {},
+  "userHistory": {
+    "usr_e808a157": [
+      {
+        "topic": "Stop using UMP and AK47 because of bullet spread in Free Fire",
+        "platform": "tiktok",
+        "caption": "Still using UMP and AK47 in Free Fire? 😳 That insane bullet spread is why you're missing headshots! 💀",
+        "hashtags": [
+          "#FreeFire",
+          "#FreeFireTips",
+          "#FreeFireGaming",
+          "#GarenaFreeFire",
+          "#FreeFireHighlights"
+        ],
+        "id": "hist_4287e1af",
+        "userId": "usr_e808a157",
+        "createdAt": "2026-08-28T10:40:09.236Z"
+      },
+      {
+        "topic": "Stop using UMP and AK47 because of bullet spread in Free Fire",
+        "platform": "instagram",
+        "caption": "Still missing easy shots in Free Fire? 🎯 You might want to drop the UMP and AK47 ASAP. Their crazy bullet spread is lowkey ruining your aim in close fights. Switch to high-accuracy guns instead! Save this for your next match. 🎮",
+        "hashtags": [
+          "#FreeFire",
+          "#FreeFireGaming",
+          "#GarenaFreeFire",
+          "#FreeFireTips",
+          "#Booyah",
+          "#FreeFireHighlights",
+          "#GamingCommunity",
+          "#GamerLife"
+        ],
+        "id": "hist_5367f949",
+        "userId": "usr_e808a157",
+        "createdAt": "2026-08-28T10:35:29.076Z"
+      }
+    ],
+    "CmH43OcFDEMzTQjAZ9NpwU6MQXi2": [
+      {
+        "id": "cap_1787916320290_rz861",
+        "platform": "tiktok",
+        "topic": "Stop using UMP and AK47 because of recoil in Free Fire",
+        "caption": "Stop scrolling if you still use the AK47 in Free Fire 💀 That recoil is ruining your headshots!",
+        "hashtags": [
+          "#FreeFire",
+          "#FreeFireTips",
+          "#GamingOnTikTok",
+          "#FFHighlights"
+        ],
+        "tone": "Casual & Relatable",
+        "createdAt": "2026-08-28T11:25:20.290Z",
+        "isFavorite": false,
+        "userId": "CmH43OcFDEMzTQjAZ9NpwU6MQXi2"
+      },
+      {
+        "id": "cap_1787916182765_caz1q",
+        "platform": "tiktok",
+        "topic": "Stop using UMP and AK47 because of recoil in Free Fire",
+        "caption": "Stop scrolling if you still use the AK47 in Free Fire 💀 That recoil is ruining your headshots!",
+        "hashtags": [
+          "#FreeFire",
+          "#FreeFireTips",
+          "#GamingOnTikTok",
+          "#FFHighlights"
+        ],
+        "tone": "Casual & Relatable",
+        "createdAt": "2026-08-28T11:23:02.765Z",
+        "isFavorite": false,
+        "userId": "CmH43OcFDEMzTQjAZ9NpwU6MQXi2"
+      },
+      {
+        "topic": "Stop using UMP and AK47 because of recoil in Free Fire",
+        "platform": "tiktok",
+        "caption": "Stop scrolling if you still use the AK47 in Free Fire 💀 That recoil is ruining your headshots!",
+        "hashtags": [
+          "#FreeFire",
+          "#FreeFireTips",
+          "#GamingOnTikTok",
+          "#FFHighlights"
+        ],
+        "id": "hist_42ca7636",
+        "userId": "CmH43OcFDEMzTQjAZ9NpwU6MQXi2",
+        "createdAt": "2026-08-28T11:23:02.440Z"
+      },
+      {
+        "id": "cap_1787916140566_z3bmi",
+        "platform": "instagram",
+        "topic": "Stop using UMP and AK47 because of recoil in Free Fire",
+        "caption": "Still losing gunfights because your bullets are flying everywhere? 🎯 Recoil on the UMP and AK47 is ruining your rank pushing! Stop relying on them and try lower-recoil beasts instead. Save this for your next squad match! 🔥",
+        "hashtags": [
+          "#FreeFire",
+          "#FreeFireGaming",
+          "#FreeFireTips",
+          "#FreeFireHighlights",
+          "#GarenaFreeFire",
+          "#Booyah",
+          "#FreeFireIndia",
+          "#GamingCommunity"
+        ],
+        "tone": "Casual & Relatable",
+        "createdAt": "2026-08-28T11:22:20.566Z",
+        "isFavorite": false,
+        "userId": "CmH43OcFDEMzTQjAZ9NpwU6MQXi2"
+      },
+      {
+        "topic": "Stop using UMP and AK47 because of recoil in Free Fire",
+        "platform": "instagram",
+        "caption": "Still losing gunfights because your bullets are flying everywhere? 🎯 Recoil on the UMP and AK47 is ruining your rank pushing! Stop relying on them and try lower-recoil beasts instead. Save this for your next squad match! 🔥",
+        "hashtags": [
+          "#FreeFire",
+          "#FreeFireGaming",
+          "#FreeFireTips",
+          "#FreeFireHighlights",
+          "#GarenaFreeFire",
+          "#Booyah",
+          "#FreeFireIndia",
+          "#GamingCommunity"
+        ],
+        "id": "hist_a340b2a8",
+        "userId": "CmH43OcFDEMzTQjAZ9NpwU6MQXi2",
+        "createdAt": "2026-08-28T11:22:20.273Z"
+      }
+    ]
+  },
+  "upgradeRequests": {
+    "upg_24ac7766": {
+      "id": "upg_24ac7766",
+      "userId": "usr_e808a157",
+      "userEmail": "coolexcellence354@gmail.com",
+      "userName": "Clement Imoh Excellence",
+      "plan": "premium",
+      "transferReference": "11",
+      "senderName": "Me",
+      "notes": "accept fast",
+      "requestedAt": "2026-08-28T10:36:21.457Z",
+      "status": "approved",
+      "resolvedAt": "2026-08-28T10:36:54.650Z",
+      "resolutionNote": "First Bank transfer matched and approved."
+    },
+    "upg_215508bf": {
+      "id": "upg_215508bf",
+      "userId": "usr_e808a157",
+      "userEmail": "coolexcellence354@gmail.com",
+      "userName": "Clement Imoh Excellence",
+      "plan": "premium",
+      "transferReference": "11",
+      "senderName": "Clement Imoh Excellence",
+      "notes": "",
+      "requestedAt": "2026-08-28T10:38:04.778Z",
+      "status": "approved",
+      "resolvedAt": "2026-08-28T10:38:18.305Z",
+      "resolutionNote": "First Bank transfer matched and approved."
+    }
+  },
   "announcement": {
     "id": "ann_initial",
     "message": "🚀 Welcome to Caption Generator Pro! Manual bank transfer upgrades are reviewed promptly by our administration team.",

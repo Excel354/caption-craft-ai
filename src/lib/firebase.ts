@@ -1,5 +1,14 @@
 import { initializeApp, getApps, getApp } from 'firebase/app';
-import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged, User as FirebaseUser } from 'firebase/auth';
+import {
+  getAuth,
+  GoogleAuthProvider,
+  signInWithPopup,
+  signInWithRedirect,
+  getRedirectResult,
+  signOut,
+  onAuthStateChanged,
+  User as FirebaseUser,
+} from 'firebase/auth';
 import {
   getFirestore,
   doc,
@@ -14,7 +23,7 @@ import {
   Unsubscribe,
 } from 'firebase/firestore';
 import firebaseConfig from '../../firebase-applet-config.json';
-import { SavedItem, User, UpgradeRequest, PlanTier } from '../types';
+import { SavedItem, User, UpgradeRequest, PlanTier, SupportMessage } from '../types';
 
 // Initialize Firebase app once
 export const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
@@ -306,10 +315,93 @@ export async function submitUpgradeRequestToFirestore(userId: string, req: Upgra
 }
 
 export async function signInWithGooglePopup(): Promise<FirebaseUser> {
-  const result = await signInWithPopup(auth, googleProvider);
-  return result.user;
+  try {
+    const result = await signInWithPopup(auth, googleProvider);
+    return result.user;
+  } catch (error: any) {
+    const errorCode = error?.code || '';
+    const errorMsg = error?.message || '';
+
+    // Handle Render / external domain not authorized in Firebase Auth
+    if (errorCode === 'auth/unauthorized-domain' || errorMsg.includes('unauthorized-domain')) {
+      const currentHost = typeof window !== 'undefined' ? window.location.hostname : 'your domain';
+      const enhancedError = new Error(
+        `Google Sign-In requires "${currentHost}" to be added to Firebase Authorized Domains.\n\n` +
+        `How to fix:\n` +
+        `1. Open Firebase Console -> Authentication -> Settings -> Authorized Domains\n` +
+        `2. Click "Add domain" and paste: ${currentHost}\n` +
+        `3. Or sign in instantly using email below.`
+      );
+      (enhancedError as any).code = 'auth/unauthorized-domain';
+      (enhancedError as any).unauthorizedHost = currentHost;
+      throw enhancedError;
+    }
+
+    // If popup was blocked by browser on Render, suggest redirect mode
+    if (errorCode === 'auth/popup-blocked') {
+      const enhancedError = new Error('Sign-in popup was blocked by browser. Please allow popups or use redirect mode.');
+      (enhancedError as any).code = 'auth/popup-blocked';
+      throw enhancedError;
+    }
+
+    throw error;
+  }
+}
+
+export async function signInWithGoogleRedirect(): Promise<void> {
+  try {
+    await signInWithRedirect(auth, googleProvider);
+  } catch (error: any) {
+    if (error?.code === 'auth/unauthorized-domain') {
+      const currentHost = typeof window !== 'undefined' ? window.location.hostname : 'your domain';
+      const enhancedError = new Error(
+        `Domain "${currentHost}" is not authorized for Google OAuth in Firebase Console. Add it under Authentication > Settings > Authorized Domains.`
+      );
+      (enhancedError as any).code = 'auth/unauthorized-domain';
+      (enhancedError as any).unauthorizedHost = currentHost;
+      throw enhancedError;
+    }
+    throw error;
+  }
+}
+
+export async function checkRedirectAuthResult(): Promise<FirebaseUser | null> {
+  try {
+    const result = await getRedirectResult(auth);
+    return result ? result.user : null;
+  } catch (error) {
+    console.warn('Redirect auth check notice:', error);
+    return null;
+  }
+}
+
+export async function saveSupportMessageToFirestore(userId: string, msg: SupportMessage): Promise<void> {
+  const path = `users/${userId}/supportMessages/${msg.id}`;
+  if (!auth.currentUser || auth.currentUser.uid !== userId) {
+    return;
+  }
+  try {
+    const ref = doc(db, 'users', userId, 'supportMessages', msg.id);
+    await setDoc(ref, {
+      id: msg.id,
+      conversationId: msg.conversationId,
+      senderRole: msg.senderRole,
+      senderId: msg.senderId,
+      senderName: msg.senderName,
+      senderEmail: msg.senderEmail || '',
+      recipientId: msg.recipientId,
+      subject: msg.subject || 'Support Message',
+      message: msg.message,
+      createdAt: msg.createdAt,
+      readByUser: msg.readByUser,
+      readByAdmin: msg.readByAdmin,
+    });
+  } catch (error) {
+    console.warn('Could not sync support message to Firestore (using backend persistence):', error);
+  }
 }
 
 export async function signOutFirebase(): Promise<void> {
   await signOut(auth);
 }
+

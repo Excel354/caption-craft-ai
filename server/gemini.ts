@@ -41,15 +41,15 @@ export interface SocialCaptionsResult {
 }
 
 // Candidate models in priority order:
-// 1. 'gemini-3.6-flash' - Primary recommended flash model (high reliability & verified quota)
-// 2. 'gemini-3.1-flash-lite' - Ultra-fast, high-availability lite model resilient to demand spikes
-// 3. 'gemini-3.7-flash' - Latest flash reasoning model
-// 4. 'gemini-flash-latest' - Stable flash alias
+// 1. 'gemini-3.1-flash-lite' - High-availability, independent quota pool, ultra-fast
+// 2. 'gemini-flash-latest' - Stable flash alias
+// 3. 'gemini-3.6-flash' - Flash model
+// 4. 'gemini-3.7-flash' - Latest flash reasoning model
 const MODEL_CASCADE = [
-  'gemini-3.6-flash',
   'gemini-3.1-flash-lite',
-  'gemini-3.7-flash',
   'gemini-flash-latest',
+  'gemini-3.6-flash',
+  'gemini-3.7-flash',
 ];
 
 function isRetryableError(error: any): boolean {
@@ -64,6 +64,8 @@ function isRetryableError(error: any): boolean {
     errMsg.includes('high demand') ||
     errMsg.includes('unavailable') ||
     errMsg.includes('resource exhausted') ||
+    errMsg.includes('resource_exhausted') ||
+    errMsg.includes('quota') ||
     errMsg.includes('overloaded') ||
     errMsg.includes('rate limit') ||
     errMsg.includes('try again later') ||

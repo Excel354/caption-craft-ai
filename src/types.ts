@@ -139,6 +139,7 @@ export interface AdminStats {
   totalFallbackCallsToday: number;
   pendingUpgradesCount: number;
   suspendedUsersCount: number;
+  unreadSupportMessagesCount?: number;
 }
 
 export interface AdminUserItem {
@@ -154,5 +155,31 @@ export interface AdminUserItem {
   isSuspended: boolean;
   suspendedAt?: string;
   pendingUpgrade?: UpgradeRequest | null;
+}
+
+export interface SupportMessage {
+  id: string;
+  conversationId: string;
+  senderRole: 'user' | 'admin';
+  senderId: string;
+  senderName: string;
+  senderEmail?: string;
+  recipientId: string; // 'admin' or userId
+  subject?: string;
+  message: string;
+  createdAt: string;
+  readByUser: boolean;
+  readByAdmin: boolean;
+}
+
+export interface SupportConversation {
+  userId: string;
+  userName: string;
+  userEmail: string;
+  userPlan: PlanTier;
+  totalMessages: number;
+  unreadByAdminCount: number;
+  lastMessage: SupportMessage;
+  updatedAt: string;
 }
 

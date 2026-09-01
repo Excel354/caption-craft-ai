@@ -78,17 +78,18 @@ service cloud.firestore {
       allow get: if isOwner(userId);
       allow list: if false;
 
-      allow create: if isOwner(userId)
-        && isValidId(userId)
-        && incoming().id == userId
-        && isValidUserProfile(incoming());
-
-      allow update: if isOwner(userId)
-        && isValidId(userId)
-        && incoming().id == userId
-        && isValidUserProfile(incoming());
+      allow create, update: if isOwner(userId)
+        && isValidId(userId);
 
       allow delete: if isOwner(userId);
+
+      // Support Messages Subcollection
+      match /supportMessages/{messageId} {
+        allow read: if isOwner(userId);
+        allow create: if isOwner(userId)
+          && isValidId(messageId);
+        allow update: if isOwner(userId);
+      }
 
       // 7. Saved Captions Subcollection
       match /savedCaptions/{captionId} {

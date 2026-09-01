@@ -1,7 +1,7 @@
 import crypto from 'crypto';
 import fs from 'fs';
 import path from 'path';
-import { PlanTier, User, DailyUsage, SavedItem, UpgradeRequest, SystemAnnouncement, BankConfig, AdminStats, AdminUserItem } from '../src/types';
+import { PlanTier, User, DailyUsage, SavedItem, UpgradeRequest, SystemAnnouncement, BankConfig, AdminStats, AdminUserItem, SupportMessage, SupportConversation } from '../src/types';
 import { PLAN_LIMITS, PREMIUM_FAIR_USE_SOFT_CAP, DEFAULT_BANK_DETAILS } from '../src/constants/platforms';
 
 interface StoredUser extends User {
@@ -34,6 +34,7 @@ interface DatabaseSchema {
   announcementsList: SystemAnnouncement[]; // Persistent history
   bankConfig: BankConfig;
   adminSessions: Record<string, number>; // token -> timestamp
+  supportMessages: Record<string, SupportMessage>; // key: messageId
   // Legacy migration compatibility
   history?: SavedItem[];
 }
@@ -69,6 +70,7 @@ class Database {
     announcementsList: [DEFAULT_ANNOUNCEMENT],
     bankConfig: DEFAULT_BANK_CONFIG,
     adminSessions: {},
+    supportMessages: {},
   };
 
   private lock = Promise.resolve();
@@ -101,6 +103,7 @@ class Database {
             ...(parsed.bankConfig || {}),
           },
           adminSessions: parsed.adminSessions || {},
+          supportMessages: parsed.supportMessages || {},
         };
         // Migrate legacy global history to default user if present
         if (Array.isArray(parsed.history) && parsed.history.length > 0) {
@@ -867,6 +870,10 @@ class Database {
 
     const suspendedUsersCount = users.filter(u => !!u.isSuspended).length;
 
+    const unreadSupportMessagesCount = Object.values(this.data.supportMessages).filter(
+      m => m.senderRole === 'user' && !m.readByAdmin
+    ).length;
+
     return {
       totalUsers: users.length,
       planCounts,
@@ -876,7 +883,147 @@ class Database {
       totalFallbackCallsToday,
       pendingUpgradesCount,
       suspendedUsersCount,
+      unreadSupportMessagesCount,
     };
+  }
+
+  // -------------------------------------------------------------
+  // Support & Admin Messaging Center
+  // -------------------------------------------------------------
+
+  public addSupportMessage(params: {
+    conversationId?: string;
+    senderRole: 'user' | 'admin';
+    senderId: string;
+    senderName: string;
+    senderEmail?: string;
+    recipientId: string;
+    subject?: string;
+    message: string;
+  }): SupportMessage {
+    const trimmedMsg = (params.message || '').trim();
+    if (!trimmedMsg) {
+      throw new Error('Message content cannot be empty');
+    }
+
+    const conversationId = params.conversationId || (params.senderRole === 'user' ? params.senderId : params.recipientId);
+    const id = `msg_${Date.now()}_${crypto.randomBytes(4).toString('hex')}`;
+    const createdAt = new Date().toISOString();
+
+    const newMsg: SupportMessage = {
+      id,
+      conversationId,
+      senderRole: params.senderRole,
+      senderId: params.senderId,
+      senderName: (params.senderName || (params.senderRole === 'admin' ? 'Support Desk' : 'Creator')).slice(0, 120),
+      senderEmail: params.senderEmail?.slice(0, 200),
+      recipientId: params.recipientId,
+      subject: (params.subject || (params.senderRole === 'admin' ? 'Direct Admin Message' : 'Help Request')).slice(0, 150),
+      message: trimmedMsg.slice(0, 4000),
+      createdAt,
+      readByUser: params.senderRole === 'user',
+      readByAdmin: params.senderRole === 'admin',
+    };
+
+    this.data.supportMessages[id] = newMsg;
+    this.persist();
+    return newMsg;
+  }
+
+  public getSupportMessagesForUser(userId: string, userEmail?: string): SupportMessage[] {
+    const normalizedEmail = (userEmail || '').toLowerCase().trim();
+    return Object.values(this.data.supportMessages)
+      .filter(m => {
+        if (m.conversationId === userId || m.senderId === userId || m.recipientId === userId) {
+          return true;
+        }
+        if (normalizedEmail && (m.senderEmail?.toLowerCase() === normalizedEmail)) {
+          return true;
+        }
+        return false;
+      })
+      .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+  }
+
+  public getUnreadSupportCountForUser(userId: string, userEmail?: string): number {
+    const normalizedEmail = (userEmail || '').toLowerCase().trim();
+    return Object.values(this.data.supportMessages).filter(m => {
+      const isTarget = m.recipientId === userId || m.conversationId === userId ||
+        (normalizedEmail && m.senderEmail?.toLowerCase() === normalizedEmail);
+      return isTarget && m.senderRole === 'admin' && !m.readByUser;
+    }).length;
+  }
+
+  public markSupportMessagesReadByUser(userId: string, userEmail?: string): void {
+    const normalizedEmail = (userEmail || '').toLowerCase().trim();
+    let updated = false;
+    for (const m of Object.values(this.data.supportMessages)) {
+      const isTarget = m.recipientId === userId || m.conversationId === userId ||
+        (normalizedEmail && m.senderEmail?.toLowerCase() === normalizedEmail);
+      if (isTarget && m.senderRole === 'admin' && !m.readByUser) {
+        m.readByUser = true;
+        updated = true;
+      }
+    }
+    if (updated) {
+      this.persist();
+    }
+  }
+
+  public getAllSupportConversations(): SupportConversation[] {
+    const conversationMap = new Map<string, SupportMessage[]>();
+
+    for (const msg of Object.values(this.data.supportMessages)) {
+      const convId = msg.conversationId || (msg.senderRole === 'user' ? msg.senderId : msg.recipientId);
+      if (!conversationMap.has(convId)) {
+        conversationMap.set(convId, []);
+      }
+      conversationMap.get(convId)!.push(msg);
+    }
+
+    const conversations: SupportConversation[] = [];
+
+    for (const [convId, msgs] of conversationMap.entries()) {
+      msgs.sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+      const lastMsg = msgs[msgs.length - 1];
+      const user = this.data.users[convId];
+      const userMsg = msgs.find(m => m.senderRole === 'user') || lastMsg;
+
+      const unreadCount = msgs.filter(m => m.senderRole === 'user' && !m.readByAdmin).length;
+
+      conversations.push({
+        userId: convId,
+        userName: user?.name || userMsg.senderName || 'Creator',
+        userEmail: user?.email || userMsg.senderEmail || 'N/A',
+        userPlan: user?.plan || 'free',
+        totalMessages: msgs.length,
+        unreadByAdminCount: unreadCount,
+        lastMessage: lastMsg,
+        updatedAt: lastMsg.createdAt,
+      });
+    }
+
+    return conversations.sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
+  }
+
+  public getMessagesForConversation(conversationId: string): SupportMessage[] {
+    return Object.values(this.data.supportMessages)
+      .filter(m => m.conversationId === conversationId || (m.senderId === conversationId && m.senderRole === 'user') || (m.recipientId === conversationId && m.senderRole === 'admin'))
+      .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+  }
+
+  public markConversationReadByAdmin(conversationId: string): void {
+    let updated = false;
+    for (const m of Object.values(this.data.supportMessages)) {
+      const isConv = m.conversationId === conversationId || (m.senderId === conversationId && m.senderRole === 'user') || (m.recipientId === conversationId && m.senderRole === 'admin');
+      if (isConv && m.senderRole === 'user' && !m.readByAdmin) {
+        m.readByAdmin = true;
+        updated = true;
+      }
+    }
+    if (updated) {
+      this.persist();
+    }
   }
 }
 
