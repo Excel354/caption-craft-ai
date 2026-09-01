@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Zap, Crown, User as UserIcon, LogOut, History, ChevronDown, CheckCircle2, Clock, Sparkles, LogIn, Bell, HelpCircle } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { AppLogo } from './AppLogo';
+import { ThemeToggle } from './ThemeToggle';
 
 interface HeaderProps {
   onOpenHistory: () => void;
@@ -168,6 +169,9 @@ export const Header: React.FC<HeaderProps> = ({ onOpenHistory, onOpenUpgrade, on
             <History className="w-4 h-4" />
           </button>
 
+          {/* Theme Toggle Button */}
+          <ThemeToggle id="header-theme-toggle" />
+
           {/* Onboarding Guide Tip Button */}
           {onOpenOnboarding && (
             <button
@@ -274,6 +278,10 @@ export const Header: React.FC<HeaderProps> = ({ onOpenHistory, onOpenUpgrade, on
                       Why Captions Matter Guide
                     </button>
                   )}
+
+                  <div className="border-t border-slate-100 dark:border-slate-800 my-1">
+                    <ThemeToggle variant="menu-item" id="user-menu-theme-toggle" />
+                  </div>
 
                   <button
                     id="user-menu-signout-btn"

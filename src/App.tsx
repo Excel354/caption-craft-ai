@@ -6,6 +6,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Sparkles, RotateCcw, AlertCircle, Layers, CheckCircle2, AlertTriangle, X, Loader2 } from 'lucide-react';
 import confetti from 'canvas-confetti';
+import { ThemeProvider } from './context/ThemeContext';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { Header } from './components/Header';
 import { PlatformSelector } from './components/PlatformSelector';
@@ -579,12 +580,14 @@ export default function App() {
   };
 
   return (
-    <AuthProvider>
-      {isAdminView ? (
-        <AdminPage onBackToApp={closeAdmin} />
-      ) : (
-        <MainGenerator onOpenAdmin={openAdmin} />
-      )}
-    </AuthProvider>
+    <ThemeProvider>
+      <AuthProvider>
+        {isAdminView ? (
+          <AdminPage onBackToApp={closeAdmin} />
+        ) : (
+          <MainGenerator onOpenAdmin={openAdmin} />
+        )}
+      </AuthProvider>
+    </ThemeProvider>
   );
 }

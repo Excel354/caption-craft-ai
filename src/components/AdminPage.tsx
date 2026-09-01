@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { AppLogo } from './AppLogo';
+import { ThemeToggle } from './ThemeToggle';
 import { AdminStats, UpgradeRequest, SystemAnnouncement, BankConfig, AdminUserItem } from '../types';
 import {
   Shield,
@@ -402,6 +403,8 @@ export const AdminPage: React.FC<{ onBackToApp: () => void }> = ({ onBackToApp }
           </div>
 
           <div className="flex items-center gap-3">
+            <ThemeToggle id="admin-theme-toggle" />
+
             <button
               id="admin-refresh-btn"
               onClick={fetchAdminData}
